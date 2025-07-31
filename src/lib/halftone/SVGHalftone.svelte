@@ -12,15 +12,17 @@
 	import Histogram from './Histogram.svelte';
 	import type { PaletteType } from './newPalette';
 	import type { PixelData } from './types.ts';
+	import UploadProgress from './UploadProgress.svelte';
 
 	let container: HTMLElement;
 	let sourceImg: HTMLImageElement;
-	let tileImages: (SVGElement | null)[] = [];
-	let svgOutput: SVGSVGElement;
+	let tileImages: HTMLImageElement[] = [];
+	let outputCanvas: HTMLCanvasElement;
+	let outputCtx: CanvasRenderingContext2D;
 
 	// Control variables
 	let pixelSize = 14; // Size of each "pixel" in the output
-	let invertSource = false;
+	let invertSource = true;
 	let selectedPalette: PaletteType | null = null;
 	let minWidth = 1080;
 	let fitToScreen = true;
@@ -30,12 +32,15 @@
 
 	// Global values
 	let pixelData: PixelData[] = [];
+	let uploadProgress = -1;
 
 	function setDarkMode(value: boolean) {
 		if (browser) {
 			document.documentElement.classList.toggle('dark', value);
 		}
 	}
+
+	// $: console.log('pixelData parent', pixelData);
 
 	$: if (darkMode) {
 		setDarkMode(true);
@@ -49,20 +54,125 @@
 
 	// Add to your existing variables
 	let tileColors: { mode: 'default' | 'custom' | 'source'; color?: string }[] = [];
-	let loadedTileImages: Record<string, SVGElement> = {};
+	let loadedTileImages: Record<string, HTMLImageElement> = {};
 
 	// Add this variable to track the selected palette index
 	let selectedPaletteIndex = 0;
+
+	async function loadTileImage(url: string): Promise<HTMLImageElement> {
+		if (loadedTileImages[url]) {
+			return loadedTileImages[url];
+		}
+
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				loadedTileImages[url] = img;
+				resolve(img);
+			};
+			img.onerror = reject;
+			img.src = url;
+		});
+	}
+
+	async function convertSVGToPNG(svgUrl: string, color: string = '#000000'): Promise<string> {
+		const response = await fetch(svgUrl);
+		const svgText = await response.text();
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(svgText, 'image/svg+xml');
+		const svg = doc.documentElement as unknown as SVGElement;
+
+		// Set black background for the SVG
+		svg.setAttribute('fill', 'black');
+		svg.style.backgroundColor = 'black';
+
+		// Apply the color only to the shapes
+		svg.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
+			(element as SVGElement).setAttribute('fill', color);
+		});
+
+		// Get the original viewBox or create one based on width/height
+		let viewBox = svg.getAttribute('viewBox');
+		if (!viewBox) {
+			const width = svg.getAttribute('width') || '100';
+			const height = svg.getAttribute('height') || '100';
+			viewBox = `0 0 ${width} ${height}`;
+		}
+
+		// Set SVG attributes for proper rendering
+		svg.setAttribute('width', '100');
+		svg.setAttribute('height', '100');
+		svg.setAttribute('viewBox', viewBox);
+		svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+		// Create a canvas to render the SVG
+		const canvas = document.createElement('canvas');
+		const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+		canvas.width = 100;
+		canvas.height = 100;
+
+		// Fill canvas with black background
+		ctx.fillStyle = 'black';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+		// Convert SVG to data URL
+		const serializer = new XMLSerializer();
+		const svgBlob = new Blob([serializer.serializeToString(svg)], { type: 'image/svg+xml' });
+		const url = URL.createObjectURL(svgBlob);
+
+		// Create an image from the SVG
+		const img = new Image();
+		await new Promise((resolve, reject) => {
+			img.onload = resolve;
+			img.onerror = reject;
+			img.src = url;
+		});
+
+		// Draw the SVG to canvas with proper scaling
+		ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+		// Get the image data to process
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		const data = imageData.data;
+
+		// Process each pixel to ensure proper opacity
+		for (let i = 0; i < data.length; i += 4) {
+			const r = data[i];
+			const g = data[i + 1];
+			const b = data[i + 2];
+			const a = data[i + 3];
+
+			// If the pixel is not white (meaning it's part of a shape)
+			if (!(r === 255 && g === 255 && b === 255)) {
+				// Keep the original color but ensure full opacity
+				data[i + 3] = 255;
+			} else {
+				// Make white pixels fully opaque
+				data[i + 3] = 255;
+			}
+		}
+
+		// Put the processed image data back
+		ctx.putImageData(imageData, 0, 0);
+
+		// Convert canvas to PNG data URL
+		const pngDataUrl = canvas.toDataURL('image/png');
+		URL.revokeObjectURL(url);
+		return pngDataUrl;
+	}
 
 	onMount(() => {
 		// Create hidden canvas for image processing
 		canvas = document.createElement('canvas');
 		ctx = canvas.getContext('2d')!;
 
-		// Create SVG element
-		svgOutput = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svgOutput.setAttribute('shape-rendering', 'crispEdges');
-		container.appendChild(svgOutput);
+		// Create output canvas
+		outputCanvas = document.createElement('canvas');
+		outputCanvas.style.width = '100%';
+		outputCanvas.style.height = '100%';
+		outputCanvas.style.backgroundColor = 'black';
+		container.appendChild(outputCanvas);
+		outputCtx = outputCanvas.getContext('2d', { willReadFrequently: true })!;
 
 		// Load default image
 		loadImage('/demo.jpg');
@@ -94,8 +204,19 @@
 			if (item.type.indexOf('image') !== -1) {
 				const file = item.getAsFile();
 				if (file) {
+					// Start progress tracking
+					uploadProgress = 0;
+
 					const reader = new FileReader();
+					reader.onprogress = (e) => {
+						if (e.lengthComputable) {
+							// FileReader progress: 0-25%
+							uploadProgress = Math.round((e.loaded / e.total) * 25);
+						}
+					};
 					reader.onload = (e) => {
+						// File read complete: 25%
+						uploadProgress = 25;
 						loadImage(e.target?.result as string);
 					};
 					reader.readAsDataURL(file);
@@ -106,17 +227,20 @@
 	}
 
 	async function loadImage(src: string) {
-		sourceImg = new Image();
-		sourceImg.onload = updateOutput;
-		sourceImg.src = src;
-	}
+		// Image loading starts: 50%
+		uploadProgress = 50;
 
-	async function loadSVG(url: string): Promise<SVGElement> {
-		const response = await fetch(url);
-		const text = await response.text();
-		const parser = new DOMParser();
-		const doc = parser.parseFromString(text, 'image/svg+xml');
-		return doc.documentElement as unknown as SVGElement;
+		sourceImg = new Image();
+		sourceImg.onload = () => {
+			// Image loaded, processing starts: 75%
+			uploadProgress = 75;
+			updateOutput();
+		};
+		sourceImg.onerror = () => {
+			// Reset progress on error
+			uploadProgress = -1;
+		};
+		sourceImg.src = src;
 	}
 
 	function applyFloydSteinbergDithering(pixels: Uint8ClampedArray, width: number, height: number) {
@@ -155,29 +279,30 @@
 	}
 
 	function updateOutput() {
-		if (!sourceImg || tileImages.length === 0) return;
-
-		// Clear previous SVG content more efficiently
-		svgOutput.replaceChildren();
+		if (!sourceImg || tileImages.length === 0 || !outputCanvas) return;
 
 		// Set dimensions
 		const aspectRatio = sourceImg.height / sourceImg.width;
 		const width = 800;
 		const height = Math.round(width * aspectRatio);
 
-		// Set SVG dimensions
-		svgOutput.setAttribute('width', width.toString());
-		svgOutput.setAttribute('height', height.toString());
+		// Get device pixel ratio for high DPI support
+		const dpr = window.devicePixelRatio || 1;
 
-		// Update the class based on fitToScreen
-		svgOutput.classList.remove('w-full', 'h-auto', 'max-h-full', 'object-contain');
+		// Set output canvas size with DPR scaling
+		outputCanvas.width = width * dpr;
+		outputCanvas.height = height * dpr;
+
+		// Scale the context to account for DPR
+		outputCtx.scale(dpr, dpr);
+
+		// Update the canvas styling based on fitToScreen
+		outputCanvas.classList.remove('w-full', 'h-auto', 'max-h-full', 'object-contain');
 		if (fitToScreen) {
-			svgOutput.classList.add('max-h-full', 'object-contain');
+			outputCanvas.classList.add('max-h-full', 'object-contain');
 		} else {
-			svgOutput.classList.add('w-full', 'h-auto');
+			outputCanvas.classList.add('w-full', 'h-auto');
 		}
-
-		svgOutput.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
 		// Set canvas dimensions and draw source image
 		canvas.width = sourceImg.width;
@@ -195,17 +320,15 @@
 			pixels[i + 1] = Math.min(255, Math.max(0, pixels[i + 1] * brightnessFactor)); // G
 			pixels[i + 2] = Math.min(255, Math.max(0, pixels[i + 2] * brightnessFactor)); // B
 		}
-		// ctx.putImageData(imageData, 0, 0);
-
-		// applyFloydSteinbergDithering(pixels, canvas.width, canvas.height);
 		ctx.putImageData(imageData, 0, 0);
 
 		// Calculate grid dimensions
 		const cols = Math.floor(width / pixelSize);
 		const rows = Math.floor(height / pixelSize);
 
-		// Create a document fragment to batch DOM operations
-		const fragment = document.createDocumentFragment();
+		// Clear output canvas with black background
+		outputCtx.fillStyle = 'black';
+		outputCtx.fillRect(0, 0, width, height);
 
 		// Pre-calculate pixel data for the entire image
 		pixelData = new Array(cols * rows);
@@ -229,21 +352,7 @@
 				};
 			}
 		}
-
-		// Create a template for each tile variant
-		const tileTemplates = tileImages.map((tileSvg) => {
-			if (!tileSvg) return null;
-			// Check if the SVG has any meaningful content
-			const hasContent = tileSvg.querySelector(
-				'path, circle, rect, polygon, line, polyline, ellipse'
-			);
-			if (!hasContent) return null;
-
-			const template = tileSvg.cloneNode(true) as SVGElement;
-			template.removeAttribute('x');
-			template.removeAttribute('y');
-			return template;
-		});
+		pixelData = pixelData;
 
 		// Track which cells have been filled by larger tiles
 		const filledCells = new Set<number>();
@@ -253,8 +362,8 @@
 			// Start with the largest tiles (highest index) and work down
 			for (let tileIndex = tileImages.length - 1; tileIndex >= 0; tileIndex--) {
 				const scale = Math.pow(2, tileIndex);
-				const template = tileTemplates[tileIndex];
-				if (!template) continue;
+				const tile = tileImages[tileIndex];
+				if (!tile) continue;
 
 				// Calculate grid dimensions for this scale
 				const scaledCols = Math.floor(cols / scale);
@@ -293,14 +402,9 @@
 						);
 						if (currentTileIndex !== tileIndex) continue;
 
-						const tile = template.cloneNode(true) as SVGElement;
-
-						// Add a small overlap by adjusting position and size
-						const overlap = 0.2;
-						tile.setAttribute('x', (baseX * pixelSize - overlap / 2).toString());
-						tile.setAttribute('y', (baseY * pixelSize - overlap / 2).toString());
-						tile.setAttribute('width', (pixelSize * scale + overlap).toString());
-						tile.setAttribute('height', (pixelSize * scale + overlap).toString());
+						const x = baseX * pixelSize;
+						const y = baseY * pixelSize;
+						const size = pixelSize * scale;
 
 						// Mark all cells in this area as filled
 						for (let si = 0; si < scale; si++) {
@@ -312,28 +416,24 @@
 							}
 						}
 
-						// Apply color based on mode
+						// Apply background color based on mode
 						if (tileColors[tileIndex]) {
 							const colorConfig = tileColors[tileIndex];
 							if (colorConfig.mode === 'custom' && colorConfig.color) {
-								tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-									(element as SVGElement).setAttribute('fill', colorConfig.color!);
-								});
+								outputCtx.fillStyle = colorConfig.color;
+								outputCtx.fillRect(x, y, size, size);
 							} else if (colorConfig.mode === 'source') {
-								const color = `rgb(${r}, ${g}, ${b})`;
-								tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-									(element as SVGElement).setAttribute('fill', color);
-								});
+								outputCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+								outputCtx.fillRect(x, y, size, size);
 							} else if (colorConfig.mode === 'default') {
-								// Use the default color from the palette
 								const defaultColor = selectedPalette?.tiles[tileIndex].color || '#000000';
-								tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-									(element as SVGElement).setAttribute('fill', defaultColor);
-								});
+								outputCtx.fillStyle = defaultColor;
+								outputCtx.fillRect(x, y, size, size);
 							}
 						}
 
-						fragment.appendChild(tile);
+						// Draw the tile image
+						outputCtx.drawImage(tile, x, y, size, size);
 					}
 				}
 			}
@@ -347,53 +447,56 @@
 						tileImages.length - 1,
 						Math.max(0, Math.floor(brightness * tileImages.length))
 					);
-					const template = tileTemplates[tileIndex];
-					if (!template) continue;
+					const tile = tileImages[tileIndex];
+					if (!tile) continue;
 
-					const tile = template.cloneNode(true) as SVGElement;
-
-					// Add a small overlap by adjusting position and size
-					const overlap = 0.2;
-					tile.setAttribute('x', (x - overlap / 2).toString());
-					tile.setAttribute('y', (y - overlap / 2).toString());
-					tile.setAttribute('width', (pixelSize + overlap).toString());
-					tile.setAttribute('height', (pixelSize + overlap).toString());
-
-					// Apply color based on mode
+					// Apply background color based on mode
 					if (tileColors[tileIndex]) {
 						const colorConfig = tileColors[tileIndex];
 						if (colorConfig.mode === 'custom' && colorConfig.color) {
-							tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-								(element as SVGElement).setAttribute('fill', colorConfig.color!);
-							});
+							outputCtx.fillStyle = colorConfig.color;
+							outputCtx.fillRect(x, y, pixelSize, pixelSize);
 						} else if (colorConfig.mode === 'source') {
-							const color = `rgb(${r}, ${g}, ${b})`;
-							tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-								(element as SVGElement).setAttribute('fill', color);
-							});
+							outputCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+							outputCtx.fillRect(x, y, pixelSize, pixelSize);
 						} else if (colorConfig.mode === 'default') {
-							// Use the default color from the palette
 							const defaultColor = selectedPalette?.tiles[tileIndex].color || '#000000';
-							tile.querySelectorAll('path, circle, rect, polygon').forEach((element) => {
-								(element as SVGElement).setAttribute('fill', defaultColor);
-							});
+							outputCtx.fillStyle = defaultColor;
+							outputCtx.fillRect(x, y, pixelSize, pixelSize);
 						}
 					}
 
-					fragment.appendChild(tile);
+					// Draw the tile image
+					outputCtx.drawImage(tile, x, y, pixelSize, pixelSize);
 				}
 			}
 		}
 
-		// Single DOM update
-		svgOutput.appendChild(fragment);
+		// Processing complete: 100%
+		uploadProgress = 100;
+
+		// Hide progress after a short delay
+		setTimeout(() => {
+			uploadProgress = -1;
+		}, 1500);
 	}
 
 	function handleSourceImageUpload(event: Event) {
 		const file = (event.target as HTMLInputElement).files?.[0];
 		if (file) {
+			// Start progress tracking
+			uploadProgress = 0;
+
 			const reader = new FileReader();
+			reader.onprogress = (e) => {
+				if (e.lengthComputable) {
+					// FileReader progress: 0-25%
+					uploadProgress = Math.round((e.loaded / e.total) * 25);
+				}
+			};
 			reader.onload = (e) => {
+				// File read complete: 25%
+				uploadProgress = 25;
 				loadImage(e.target?.result as string);
 			};
 			reader.readAsDataURL(file);
@@ -412,94 +515,52 @@
 	}
 
 	function exportSVG() {
-		if (!svgOutput) return;
-
-		const serializer = new XMLSerializer();
-		const svgString = serializer.serializeToString(svgOutput);
-		const blob = new Blob([svgString], { type: 'image/svg+xml' });
-		const url = URL.createObjectURL(blob);
-
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = `halftone_${getTimestamp()}.svg`;
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
+		// SVG export is no longer supported in canvas mode
+		console.warn('SVG export not available in canvas mode');
 	}
 
 	function exportPNG() {
-		if (!svgOutput) return;
+		if (!outputCanvas) return;
 
 		console.log('export PNG');
 
-		// Create a canvas for rendering the SVG
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d')!;
-
 		// Get original dimensions
-		const originalWidth = parseInt(svgOutput.getAttribute('width') || '800');
-		const originalHeight = parseInt(svgOutput.getAttribute('height') || '600');
+		const originalWidth = outputCanvas.width / (window.devicePixelRatio || 1);
+		const originalHeight = outputCanvas.height / (window.devicePixelRatio || 1);
 
 		// Calculate new dimensions (maintaining aspect ratio)
 		const scale = Math.max(minWidth / originalWidth, 1);
 		const width = Math.round(originalWidth * scale);
 		const height = Math.round(originalHeight * scale);
 
+		// Create a new canvas for export
+		const exportCanvas = document.createElement('canvas');
+		const exportCtx = exportCanvas.getContext('2d')!;
+
 		// Set canvas size to upscaled dimensions
-		canvas.width = width;
-		canvas.height = height;
+		exportCanvas.width = width;
+		exportCanvas.height = height;
 
-		// Convert SVG to data URL
-		const svgString = new XMLSerializer().serializeToString(svgOutput);
-		const blob = new Blob([svgString], { type: 'image/svg+xml' });
-		const url = URL.createObjectURL(blob);
+		// Use better quality scaling
+		exportCtx.imageSmoothingEnabled = true;
+		exportCtx.imageSmoothingQuality = 'high';
 
-		// Create image from SVG and draw to canvas
-		const img = new Image();
-		img.onload = () => {
-			// Use better quality scaling
-			ctx.imageSmoothingEnabled = true;
-			ctx.imageSmoothingQuality = 'high';
+		// Draw upscaled image from output canvas
+		exportCtx.drawImage(outputCanvas, 0, 0, width, height);
 
-			// Draw upscaled image
-			ctx.drawImage(img, 0, 0, width, height);
-
-			// Convert canvas to PNG and download
-			canvas.toBlob((blob) => {
-				if (blob) {
-					const url = URL.createObjectURL(blob);
-					const link = document.createElement('a');
-					link.href = url;
-					link.download = `halftone_${getTimestamp()}.png`;
-					document.body.appendChild(link);
-					link.click();
-					document.body.removeChild(link);
-					URL.revokeObjectURL(url);
-				}
-			}, 'image/png');
-
-			URL.revokeObjectURL(url);
-		};
-		img.src = url;
-	}
-
-	async function handleTileImageUpload(event: Event, index: number) {
-		const file = (event.target as HTMLInputElement).files?.[0];
-		if (!file || !file.type.includes('svg')) return;
-
-		const reader = new FileReader();
-		reader.onload = async (e) => {
-			const svgText = e.target?.result as string;
-			const parser = new DOMParser();
-			const doc = parser.parseFromString(svgText, 'image/svg+xml');
-			const svg = doc.documentElement as unknown as SVGElement;
-
-			tileImages[index] = svg;
-			tileImages = tileImages;
-			updateOutput();
-		};
-		reader.readAsText(file);
+		// Convert canvas to PNG and download
+		exportCanvas.toBlob((blob) => {
+			if (blob) {
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement('a');
+				link.href = url;
+				link.download = `halftone_${getTimestamp()}.png`;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			}
+		}, 'image/png');
 	}
 
 	// Add new handler for color updates
@@ -515,15 +576,13 @@
 		selectedPaletteIndex = index;
 		selectedPalette = palette;
 
-		// Load all SVGs from the palette
-		const newTileImages: (SVGElement | null)[] = [];
-		for (const tile of palette.tiles) {
-			if (!loadedTileImages[tile.svg]) {
-				loadedTileImages[tile.svg] = await loadSVG(tile.svg);
-			}
-			const tileSvg = loadedTileImages[tile.svg];
-			newTileImages.push(tileSvg);
-		}
+		// Convert SVG tiles to PNGs and load them
+		const newTileImages = await Promise.all(
+			palette.tiles.map(async (tile) => {
+				const pngUrl = await convertSVGToPNG(tile.svg, tile.color || '#000000');
+				return loadTileImage(pngUrl);
+			})
+		);
 
 		// Initialize tile colors based on palette, preserving color modes
 		tileColors = palette.tiles.map((tile) => ({
@@ -639,18 +698,23 @@
 					</div>
 				</div>
 
-				<div class="flex flex-col gap-1.5 w-full max-w-sm">
-					<Label for="source-upload">Source Image</Label>
-					<div class="space-y-2">
-						<Input
-							on:change={handleSourceImageUpload}
-							class="pt-1.5"
-							id="source-upload"
-							type="file"
-						/>
-						<p class="text-sm text-muted-foreground">
-							Or paste an image from your clipboard (Ctrl/Cmd + V)
-						</p>
+				<div class="flex">
+					<div class="flex flex-col gap-1.5 w-full max-w-sm">
+						<Label for="source-upload">Source Image</Label>
+						<div class="space-y-2">
+							<Input
+								on:change={handleSourceImageUpload}
+								class="pt-1.5"
+								id="source-upload"
+								type="file"
+							/>
+							<p class="text-sm text-muted-foreground">
+								Or paste an image from your clipboard (Ctrl/Cmd + V)
+							</p>
+						</div>
+					</div>
+					<div>
+						<UploadProgress progress={uploadProgress} />
 					</div>
 				</div>
 
