@@ -32,7 +32,15 @@
 
 	// Global values
 	let pixelData: PixelData[] = [];
+	let isUploading = false;
 	let uploadProgress = -1;
+	let histogramPercentage = 0.5;
+
+	function percentageToBrightnessMultiplier(percentage: number) {
+		return percentage * 200 - 100;
+	}
+
+	$: brightnessAdjustment = percentageToBrightnessMultiplier(histogramPercentage);
 
 	function setDarkMode(value: boolean) {
 		if (browser) {
@@ -198,6 +206,7 @@
 
 	function handlePaste(event: ClipboardEvent) {
 		const items = event.clipboardData?.items;
+		isUploading = true;
 		if (!items) return;
 
 		for (const item of items) {
@@ -218,6 +227,9 @@
 						// File read complete: 25%
 						uploadProgress = 25;
 						loadImage(e.target?.result as string);
+						setTimeout(() => {
+							isUploading = false;
+						}, 200);
 					};
 					reader.readAsDataURL(file);
 					break;
@@ -228,12 +240,16 @@
 
 	async function loadImage(src: string) {
 		// Image loading starts: 50%
-		uploadProgress = 50;
+		if (isUploading) {
+			uploadProgress = 50;
+		}
 
 		sourceImg = new Image();
 		sourceImg.onload = () => {
 			// Image loaded, processing starts: 75%
-			uploadProgress = 75;
+			if (isUploading) {
+				uploadProgress = 75;
+			}
 			updateOutput();
 		};
 		sourceImg.onerror = () => {
@@ -473,7 +489,9 @@
 		}
 
 		// Processing complete: 100%
-		uploadProgress = 100;
+		if (isUploading) {
+			uploadProgress = 100;
+		}
 
 		// Hide progress after a short delay
 		setTimeout(() => {
@@ -670,7 +688,7 @@
 				</div>
 
 				<div>
-					<Histogram {pixelData} />
+					<Histogram bind:percentage={histogramPercentage} {pixelData} />
 				</div>
 
 				<div class="flex flex-col gap-1.5 w-full max-w-sm">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Spring } from 'svelte/motion';
 	export let progress: number = 50;
 
 	function mapProgressToAngle(progress: number): number {
@@ -6,9 +7,16 @@
 	}
 
 	$: angularProgress = mapProgressToAngle(progress);
+
+	let angleSpring = new Spring(0, {
+		stiffness: 0.1,
+		damping: 0.7
+	});
+
+	$: angleSpring.set(angularProgress);
 </script>
 
-<div class="p-1 w-12 h-12 progress rounded-xl" style="--progress: {angularProgress}deg">
+<div class="p-1 w-12 h-12 progress rounded-xl" style="--progress: {angleSpring.current}deg">
 	<div class="bg-black w-full h-full rounded-lg">p</div>
 </div>
 

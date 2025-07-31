@@ -1,8 +1,16 @@
 <script lang="ts">
 	import type { PixelData } from '$lib/halftone/types.ts';
+	import { onMount } from 'svelte';
+	import { Spring } from 'svelte/motion';
 	export let pixelData: PixelData[] = [];
-	export let divisions = 20;
+	export let divisions = 10;
 	let curveMode = true;
+
+	let handle: HTMLDivElement;
+	let slider: HTMLDivElement;
+	let mouseDown = false;
+
+	export let percentage = 0.5;
 
 	// Function to calculate brightness histogram
 	export function getBrightnessHistogram(pixels: PixelData[], numDivisions: number): number[] {
@@ -115,82 +123,83 @@
 
 	$: console.log('Brightness histogram:', histogram);
 	$: console.log('Division ranges:', divisionRanges);
+
+	function handleMouseDown(e: any) {
+		mouseDown = true;
+		// move handle to position
+		const x = e.clientX - slider.getBoundingClientRect().left;
+		const width = slider.clientWidth;
+		percentage = x / width;
+		// console.log('x', x, 'width', width, 'percentage', percentage);
+		let pxToMove = percentage * width;
+		setHandle(pxToMove);
+	}
+
+	function handleMouseUp() {
+		mouseDown = false;
+	}
+
+	function handleMouseMove(e: any) {
+		if (!mouseDown) return;
+		const x = e.clientX - slider.getBoundingClientRect().left;
+		const width = slider.clientWidth;
+		percentage = x / width;
+		// console.log('x', x, 'width', width, 'percentage', percentage);
+		let pxToMove = percentage * width;
+		setHandle(pxToMove);
+	}
+
+	function setHandle(x: number) {
+		handle.style.left = x + 'px';
+	}
+
+	onMount(() => {
+		document.addEventListener('mousemove', handleMouseMove, { passive: true });
+	});
 </script>
 
 <div class="w-full h-full p-0">
-	<div class="mb-4 flex items-center gap-4">
-		<label class="flex items-center gap-2 text-sm">
-			<input type="checkbox" bind:checked={curveMode} class="rounded" />
-			Smooth curve
-		</label>
-
-		<div class="flex-1">
-			<label for="divisions" class="block text-xs text-gray-600 mb-1">
-				Divisions: {divisions}
-			</label>
-			<input
-				id="divisions"
-				type="range"
-				min="2"
-				max="100"
-				bind:value={divisions}
-				class="w-full h-1"
-			/>
-		</div>
-	</div>
-
 	{#if pixelData.length > 0}
 		<div class="mb-4">
-			<h3 class="text-lg font-semibold mb-2 hidden">Brightness Histogram</h3>
-			<p class="text-sm text-gray-600 mb-3 hidden">
-				Total pixels: {pixelData.length}
-			</p>
+			<div
+				role="slider"
+				aria-valuenow={0}
+				tabindex="0"
+				on:mousedown={handleMouseDown}
+				on:mouseup={handleMouseUp}
+				bind:this={slider}
+				class="p-1.5 border-[1.5px] border-h-neutral-400 rounded-2xl relative"
+			>
+				<div class="w-full h-[50px] overflow-hidden rounded-lg bg-h-neutral-400">
+					<svg class="w-full h-full -scale-x-100" viewBox="0 0 100 100" preserveAspectRatio="none">
+						<defs>
+							<linearGradient id="histogramGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+								<stop offset="0%" style="stop-color:black;stop-opacity:0.9" />
+								<stop offset="100%" style="stop-color:black;stop-opacity:0.9" />
+							</linearGradient>
+						</defs>
 
-			{#if curveMode == false}
-				<!-- Histogram bars -->
-				<div class="p-1.5 border-2 border-h-neutral-400 rounded-2xl">
-					<div class="flex items-end gap-0 h-[100px] overflow-hidden rounded-lg">
-						{#each histogram as count, i}
-							<div class="flex-1 bg-h-neutral-400 rounded-t-0 relative h-full flex items-end">
-								<div
-									class="bg-black w-full rounded-t-0 transition-all duration-300"
-									style="height: {Math.max(1, (count / Math.max(...histogram)) * 100)}%"
-								>
-									<!--  -->
-								</div>
-							</div>
-						{/each}
-					</div>
+						{#if histogram.length > 0}
+							<!-- Create smooth curve path -->
+							<path
+								d={createSmoothPath(histogram)}
+								fill="url(#histogramGradient)"
+								stroke="red"
+								stroke-width="0"
+								vector-effect="non-scaling-stroke"
+							/>
+						{/if}
+					</svg>
 				</div>
-			{:else}
-				<div class="p-1.5 border-2 border-h-neutral-400 rounded-2xl">
-					<div class="w-full h-[64px] overflow-hidden rounded-lg bg-h-neutral-400">
-						<svg class="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-							<defs>
-								<linearGradient id="histogramGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-									<stop offset="0%" style="stop-color:black;stop-opacity:0.9" />
-									<stop offset="100%" style="stop-color:black;stop-opacity:0.9" />
-								</linearGradient>
-							</defs>
-
-							{#if histogram.length > 0}
-								<!-- Create smooth curve path -->
-								<path
-									d={createSmoothPath(histogram)}
-									fill="url(#histogramGradient)"
-									stroke="red"
-									stroke-width="0"
-									vector-effect="non-scaling-stroke"
-								/>
-							{/if}
-						</svg>
-					</div>
+				<div bind:this={handle} class="absolute w-[1.5px] h-full bg-white inset-0">
+					<div class="absolute w-4 h-[7px] -top-px left-1/2 mx-auto bg-white -translate-x-1/2" />
+					<div class="absolute w-4 h-[7px] -bottom-px left-1/2 mx-auto bg-white -translate-x-1/2" />
 				</div>
-			{/if}
+			</div>
 		</div>
 
 		<!-- Raw data display -->
-		<details class="mt-4 hidden">
+		<!-- <details class="mt-4 hidden">
 			<summary class="cursor-pointer text-sm font-medium">Raw Histogram Data</summary>
 			<div class="mt-2 p-2 bg-gray-100 rounded text-xs font-mono">
 				<div>Histogram: {JSON.stringify(histogram)}</div>
@@ -200,7 +209,7 @@
 					)}
 				</div>
 			</div>
-		</details>
+		</details> -->
 	{:else}
 		<div class="text-gray-500 text-center py-8">No pixel data available</div>
 	{/if}
