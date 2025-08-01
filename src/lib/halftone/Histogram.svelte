@@ -2,6 +2,7 @@
 	import type { PixelData } from '$lib/halftone/types.ts';
 	import { onMount } from 'svelte';
 	import { Spring } from 'svelte/motion';
+	import CustomSlider from './CustomSlider.svelte';
 	export let pixelData: PixelData[] = [];
 	export let divisions = 10;
 	let curveMode = true;
@@ -124,37 +125,37 @@
 	$: console.log('Brightness histogram:', histogram);
 	$: console.log('Division ranges:', divisionRanges);
 
-	function handleMouseDown(e: any) {
-		mouseDown = true;
-		// move handle to position
-		const x = e.clientX - slider.getBoundingClientRect().left;
-		const width = slider.clientWidth;
-		percentage = x / width;
-		// console.log('x', x, 'width', width, 'percentage', percentage);
-		let pxToMove = percentage * width;
-		setHandle(pxToMove);
-	}
+	// function handleMouseDown(e: any) {
+	// 	mouseDown = true;
+	// 	// move handle to position
+	// 	const x = e.clientX - slider.getBoundingClientRect().left;
+	// 	const width = slider.clientWidth;
+	// 	percentage = x / width;
+	// 	// console.log('x', x, 'width', width, 'percentage', percentage);
+	// 	let pxToMove = percentage * width;
+	// 	setHandle(pxToMove);
+	// }
 
-	function handleMouseUp() {
-		mouseDown = false;
-	}
+	// function handleMouseUp() {
+	// 	mouseDown = false;
+	// }
 
-	function handleMouseMove(e: any) {
-		if (!mouseDown) return;
-		const x = e.clientX - slider.getBoundingClientRect().left;
-		const width = slider.clientWidth;
-		percentage = x / width;
-		// console.log('x', x, 'width', width, 'percentage', percentage);
-		let pxToMove = percentage * width;
-		setHandle(pxToMove);
-	}
+	// function handleMouseMove(e: any) {
+	// 	if (!mouseDown) return;
+	// 	const x = e.clientX - slider.getBoundingClientRect().left;
+	// 	const width = slider.clientWidth;
+	// 	percentage = x / width;
+	// 	// console.log('x', x, 'width', width, 'percentage', percentage);
+	// 	let pxToMove = percentage * width;
+	// 	setHandle(pxToMove);
+	// }
 
-	function setHandle(x: number) {
-		handle.style.left = x + 'px';
-	}
+	// function setHandle(x: number) {
+	// 	handle.style.left = x + 'px';
+	// }
 
 	onMount(() => {
-		document.addEventListener('mousemove', handleMouseMove, { passive: true });
+		// document.addEventListener('mousemove', handleMouseMove, { passive: true });
 	});
 </script>
 
@@ -165,8 +166,6 @@
 				role="slider"
 				aria-valuenow={0}
 				tabindex="0"
-				on:mousedown={handleMouseDown}
-				on:mouseup={handleMouseUp}
 				bind:this={slider}
 				class="p-1.5 border-[1.5px] border-h-neutral-400 rounded-2xl relative"
 			>
@@ -191,9 +190,21 @@
 						{/if}
 					</svg>
 				</div>
-				<div bind:this={handle} class="absolute w-[1.5px] h-full bg-white inset-0">
+				<!-- <div bind:this={handle} class="absolute w-[1.5px] h-full bg-white inset-0">
 					<div class="absolute w-4 h-[7px] -top-px left-1/2 mx-auto bg-white -translate-x-1/2" />
 					<div class="absolute w-4 h-[7px] -bottom-px left-1/2 mx-auto bg-white -translate-x-1/2" />
+				</div> -->
+				<div class="absolute w-full h-full inset-0">
+					<CustomSlider
+						bind:value={percentage}
+						trackColor="transparent"
+						thumbColor="white"
+						thumbWidth="10px"
+						thumbHeight="60px"
+						min={0}
+						max={1}
+						step={0.01}
+					/>
 				</div>
 			</div>
 		</div>

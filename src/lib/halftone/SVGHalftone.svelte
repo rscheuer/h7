@@ -35,6 +35,12 @@
 	let isUploading = false;
 	let uploadProgress = -1;
 	let histogramPercentage = 0.5;
+	let isAnimating = false;
+	let animationFrameId: number;
+	let shouldAnimate = false;
+	let animateFromTop = true;
+	let skipBrightestLayer = true;
+	let animateByRows = true;
 
 	function percentageToBrightnessMultiplier(percentage: number) {
 		return percentage * 200 - 100;
@@ -197,10 +203,13 @@
 		}
 	});
 
-	// Clean up event listener on component destruction
+	// Clean up event listener and animations on component destruction
 	onDestroy(() => {
 		if (browser) {
 			window.removeEventListener('paste', handlePaste);
+		}
+		if (animationFrameId) {
+			cancelAnimationFrame(animationFrameId);
 		}
 	});
 
@@ -229,7 +238,7 @@
 						loadImage(e.target?.result as string);
 						setTimeout(() => {
 							isUploading = false;
-						}, 200);
+						}, 50);
 					};
 					reader.readAsDataURL(file);
 					break;
@@ -250,7 +259,7 @@
 			if (isUploading) {
 				uploadProgress = 75;
 			}
-			updateOutput();
+			shouldAnimate = true; // Enable animation for image load
 		};
 		sourceImg.onerror = () => {
 			// Reset progress on error
@@ -499,6 +508,419 @@
 		}, 1500);
 	}
 
+	function updateOutputAnimated(shouldAnimate = false) {
+		if (!sourceImg || tileImages.length === 0 || !outputCanvas) return;
+
+		// Cancel any existing animation
+		if (animationFrameId) {
+			cancelAnimationFrame(animationFrameId);
+		}
+
+		// Set dimensions
+		const aspectRatio = sourceImg.height / sourceImg.width;
+		const width = 800;
+		const height = Math.round(width * aspectRatio);
+
+		// Get device pixel ratio for high DPI support
+		const dpr = window.devicePixelRatio || 1;
+
+		// Set output canvas size with DPR scaling
+		outputCanvas.width = width * dpr;
+		outputCanvas.height = height * dpr;
+
+		// Scale the context to account for DPR
+		outputCtx.scale(dpr, dpr);
+
+		// Update the canvas styling based on fitToScreen
+		outputCanvas.classList.remove('w-full', 'h-auto', 'max-h-full', 'object-contain');
+		if (fitToScreen) {
+			outputCanvas.classList.add('max-h-full', 'object-contain');
+		} else {
+			outputCanvas.classList.add('w-full', 'h-auto');
+		}
+
+		// Set canvas dimensions and draw source image
+		canvas.width = sourceImg.width;
+		canvas.height = sourceImg.height;
+		ctx.drawImage(sourceImg, 0, 0);
+
+		// Get image data
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		const pixels = imageData.data;
+
+		// Apply brightness adjustment
+		const brightnessFactor = 1 + brightnessAdjustment / 100;
+		for (let i = 0; i < pixels.length; i += 4) {
+			pixels[i] = Math.min(255, Math.max(0, pixels[i] * brightnessFactor)); // R
+			pixels[i + 1] = Math.min(255, Math.max(0, pixels[i + 1] * brightnessFactor)); // G
+			pixels[i + 2] = Math.min(255, Math.max(0, pixels[i + 2] * brightnessFactor)); // B
+		}
+		ctx.putImageData(imageData, 0, 0);
+
+		// Calculate grid dimensions
+		const cols = Math.floor(width / pixelSize);
+		const rows = Math.floor(height / pixelSize);
+
+		// Clear output canvas with black background
+		outputCtx.fillStyle = 'black';
+		outputCtx.fillRect(0, 0, width, height);
+
+		// Pre-calculate pixel data for the entire image
+		pixelData = new Array(cols * rows);
+		for (let i = 0; i < cols; i++) {
+			for (let j = 0; j < rows; j++) {
+				const imgX = Math.floor(((i * pixelSize) / width) * canvas.width);
+				const imgY = Math.floor(((j * pixelSize) / height) * canvas.height);
+				const index = (imgY * canvas.width + imgX) * 4;
+				const r = pixels[index];
+				const g = pixels[index + 1];
+				const b = pixels[index + 2];
+				const brightness = invertSource ? 1 - (r + g + b) / (255 * 3) : (r + g + b) / (255 * 3);
+
+				pixelData[j * cols + i] = {
+					brightness,
+					r,
+					g,
+					b,
+					x: i * pixelSize,
+					y: j * pixelSize
+				};
+			}
+		}
+		pixelData = pixelData;
+
+		// Prepare tile data for animation
+		const tilesByLayer = new Map<
+			number,
+			Array<{
+				x: number;
+				y: number;
+				size: number;
+				r: number;
+				g: number;
+				b: number;
+				tileIndex: number;
+			}>
+		>();
+		const filledCells = new Set<number>();
+
+		// Process tiles and group by layer
+		if (scalingMode) {
+			// Start with the largest tiles (highest index) and work down
+			for (let tileIndex = tileImages.length - 1; tileIndex >= 0; tileIndex--) {
+				const scale = Math.pow(2, tileIndex);
+				const tile = tileImages[tileIndex];
+				if (!tile) continue;
+
+				const layerTiles: Array<{
+					x: number;
+					y: number;
+					size: number;
+					r: number;
+					g: number;
+					b: number;
+					tileIndex: number;
+				}> = [];
+
+				// Calculate grid dimensions for this scale
+				const scaledCols = Math.floor(cols / scale);
+				const scaledRows = Math.floor(rows / scale);
+
+				// Process each cell in the scaled grid
+				for (let i = 0; i < scaledCols; i++) {
+					for (let j = 0; j < scaledRows; j++) {
+						// Calculate the base position in the original grid
+						const baseX = i * scale;
+						const baseY = j * scale;
+
+						// Skip if any cell in this area is already filled
+						let skip = false;
+						for (let si = 0; si < scale && !skip; si++) {
+							for (let sj = 0; sj < scale && !skip; sj++) {
+								const checkIndex = (baseY + sj) * cols + (baseX + si);
+								if (filledCells.has(checkIndex)) {
+									skip = true;
+								}
+							}
+						}
+						if (skip) continue;
+
+						// Get the brightness from the center of the scaled area
+						const centerX = Math.floor(baseX + scale / 2);
+						const centerY = Math.floor(baseY + scale / 2);
+						const centerIndex = centerY * cols + centerX;
+						const { brightness, r, g, b } = pixelData[centerIndex];
+
+						// Only place tile if it matches the current brightness level
+						const currentTileIndex = Math.min(
+							tileImages.length - 1,
+							Math.max(0, Math.floor(brightness * tileImages.length))
+						);
+						if (currentTileIndex !== tileIndex) continue;
+
+						const x = baseX * pixelSize;
+						const y = baseY * pixelSize;
+						const size = pixelSize * scale;
+
+						// Mark all cells in this area as filled
+						for (let si = 0; si < scale; si++) {
+							for (let sj = 0; sj < scale; sj++) {
+								const fillIndex = (baseY + sj) * cols + (baseX + si);
+								if (fillIndex < cols * rows) {
+									filledCells.add(fillIndex);
+								}
+							}
+						}
+
+						layerTiles.push({ x, y, size, r, g, b, tileIndex });
+					}
+				}
+
+				if (layerTiles.length > 0) {
+					tilesByLayer.set(tileIndex, layerTiles);
+				}
+			}
+		} else {
+			// Original non-scaling mode behavior
+			for (let tileIndex = tileImages.length - 1; tileIndex >= 0; tileIndex--) {
+				const layerTiles: Array<{
+					x: number;
+					y: number;
+					size: number;
+					r: number;
+					g: number;
+					b: number;
+					tileIndex: number;
+				}> = [];
+
+				for (let i = 0; i < cols; i++) {
+					for (let j = 0; j < rows; j++) {
+						const cellIndex = j * cols + i;
+						const { brightness, r, g, b, x, y } = pixelData[cellIndex];
+						const currentTileIndex = Math.min(
+							tileImages.length - 1,
+							Math.max(0, Math.floor(brightness * tileImages.length))
+						);
+
+						if (currentTileIndex === tileIndex) {
+							layerTiles.push({ x, y, size: pixelSize, r, g, b, tileIndex });
+						}
+					}
+				}
+
+				if (layerTiles.length > 0) {
+					tilesByLayer.set(tileIndex, layerTiles);
+				}
+			}
+		}
+
+		// If not animating, draw all at once
+		if (!shouldAnimate) {
+			tilesByLayer.forEach((layerTiles) => {
+				drawTileLayer(layerTiles);
+			});
+			return;
+		}
+
+		// Animate drawing each layer
+		isAnimating = true;
+		const layerIndices = Array.from(tilesByLayer.keys()).sort((a, b) => b - a); // Highest to lowest
+
+		// Draw brightest layer immediately if skipping animation
+		if (skipBrightestLayer && layerIndices.length > 0) {
+			const brightestLayerTiles = tilesByLayer.get(layerIndices[0]);
+			if (brightestLayerTiles) {
+				drawTileLayer(brightestLayerTiles);
+			}
+		}
+
+		let currentLayerIndex = skipBrightestLayer ? 1 : 0; // Skip first (brightest) layer if enabled
+
+		function drawNextLayer() {
+			if (currentLayerIndex >= layerIndices.length) {
+				isAnimating = false;
+				return;
+			}
+
+			const tileIndex = layerIndices[currentLayerIndex];
+			const layerTiles = tilesByLayer.get(tileIndex);
+
+			if (layerTiles) {
+				drawTileLayerAnimated(layerTiles, () => {
+					currentLayerIndex++;
+					// Continue to next layer after current layer finishes
+					setTimeout(() => {
+						animationFrameId = requestAnimationFrame(drawNextLayer);
+					}, 1); // Short delay between layers
+				});
+			} else {
+				currentLayerIndex++;
+				animationFrameId = requestAnimationFrame(drawNextLayer);
+			}
+		}
+
+		// Start animation
+		animationFrameId = requestAnimationFrame(drawNextLayer);
+	}
+
+	function drawTileLayer(
+		layerTiles: Array<{
+			x: number;
+			y: number;
+			size: number;
+			r: number;
+			g: number;
+			b: number;
+			tileIndex: number;
+		}>
+	) {
+		layerTiles.forEach(({ x, y, size, r, g, b, tileIndex }) => {
+			drawSingleTile({ x, y, size, r, g, b, tileIndex });
+		});
+	}
+
+	function drawTileLayerAnimated(
+		layerTiles: Array<{
+			x: number;
+			y: number;
+			size: number;
+			r: number;
+			g: number;
+			b: number;
+			tileIndex: number;
+		}>,
+		onComplete: () => void
+	) {
+		if (animateByRows) {
+			// Group tiles by rows (y-coordinate)
+			const rowMap = new Map<number, typeof layerTiles>();
+			layerTiles.forEach((tile) => {
+				const rowY = tile.y;
+				if (!rowMap.has(rowY)) {
+					rowMap.set(rowY, []);
+				}
+				rowMap.get(rowY)!.push(tile);
+			});
+
+			// Sort rows by y-coordinate
+			const sortedRows = Array.from(rowMap.keys()).sort((a, b) => {
+				return animateFromTop ? a - b : b - a;
+			});
+
+			let currentRowIndex = 0;
+
+			function drawNextRow() {
+				if (currentRowIndex >= sortedRows.length) {
+					onComplete();
+					return;
+				}
+
+				// Draw all tiles in current row
+				const rowY = sortedRows[currentRowIndex];
+				const rowTiles = rowMap.get(rowY)!;
+
+				// Sort tiles within the row by x-coordinate
+				const sortedRowTiles = rowTiles.sort((a, b) => a.x - b.x);
+
+				// Draw all tiles in this row immediately
+				sortedRowTiles.forEach((tile) => {
+					drawSingleTile(tile);
+				});
+
+				currentRowIndex++;
+
+				// Continue to next row
+				setTimeout(() => {
+					animationFrameId = requestAnimationFrame(drawNextRow);
+				}, 5); // 15ms delay between rows
+			}
+
+			// Start drawing
+			animationFrameId = requestAnimationFrame(drawNextRow);
+		} else {
+			// Original individual tile animation
+			// Sort tiles by position (top to bottom or bottom to top)
+			const sortedTiles = [...layerTiles].sort((a, b) => {
+				if (animateFromTop) {
+					// Top to bottom: sort by y, then x
+					if (a.y !== b.y) return a.y - b.y;
+					return a.x - b.x;
+				} else {
+					// Bottom to top: sort by y descending, then x
+					if (a.y !== b.y) return b.y - a.y;
+					return a.x - b.x;
+				}
+			});
+
+			let currentTileIndex = 0;
+			const tilesPerBatch = 3; // Draw multiple tiles per animation frame for speed
+
+			function drawNextBatch() {
+				if (currentTileIndex >= sortedTiles.length) {
+					onComplete();
+					return;
+				}
+
+				// Draw a batch of tiles
+				const endIndex = Math.min(currentTileIndex + tilesPerBatch, sortedTiles.length);
+				for (let i = currentTileIndex; i < endIndex; i++) {
+					const tileData = sortedTiles[i];
+					drawSingleTile(tileData);
+				}
+
+				currentTileIndex = endIndex;
+
+				// Continue with next batch
+				setTimeout(() => {
+					animationFrameId = requestAnimationFrame(drawNextBatch);
+				}, 2); // 2ms delay between batches for smooth animation
+			}
+
+			// Start drawing
+			animationFrameId = requestAnimationFrame(drawNextBatch);
+		}
+	}
+
+	function drawSingleTile({
+		x,
+		y,
+		size,
+		r,
+		g,
+		b,
+		tileIndex
+	}: {
+		x: number;
+		y: number;
+		size: number;
+		r: number;
+		g: number;
+		b: number;
+		tileIndex: number;
+	}) {
+		const tile = tileImages[tileIndex];
+		if (!tile) return;
+
+		// Apply background color based on mode
+		if (tileColors[tileIndex]) {
+			const colorConfig = tileColors[tileIndex];
+			if (colorConfig.mode === 'custom' && colorConfig.color) {
+				outputCtx.fillStyle = colorConfig.color;
+				outputCtx.fillRect(x, y, size, size);
+			} else if (colorConfig.mode === 'source') {
+				outputCtx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+				outputCtx.fillRect(x, y, size, size);
+			} else if (colorConfig.mode === 'default') {
+				const defaultColor = selectedPalette?.tiles[tileIndex].color || '#000000';
+				outputCtx.fillStyle = defaultColor;
+				outputCtx.fillRect(x, y, size, size);
+			}
+		}
+
+		// Draw the tile image
+		outputCtx.drawImage(tile, x, y, size, size);
+	}
+
 	function handleSourceImageUpload(event: Event) {
 		const file = (event.target as HTMLInputElement).files?.[0];
 		if (file) {
@@ -609,15 +1031,16 @@
 		}));
 
 		tileImages = newTileImages;
-		updateOutput();
+		shouldAnimate = true; // Enable animation for palette change
 	}
 
-	// Update output when controls change
+	// Update output when controls change or tiles change
 	$: if (
 		sourceImg &&
-		(pixelSize || invertSource || fitToScreen || brightnessAdjustment || scalingMode)
+		(pixelSize || invertSource || fitToScreen || brightnessAdjustment || scalingMode || tileImages)
 	) {
-		updateOutput();
+		updateOutputAnimated(shouldAnimate);
+		shouldAnimate = false; // Reset after use
 	}
 </script>
 
@@ -685,6 +1108,21 @@
 				<div class="flex items-center space-x-2">
 					<Switch bind:checked={scalingMode} id="scaling-mode" />
 					<Label for="scaling-mode">Scaling Mode</Label>
+				</div>
+
+				<div class="flex items-center space-x-2">
+					<Switch bind:checked={animateFromTop} id="animate-from-top" />
+					<Label for="animate-from-top">Animate from Top</Label>
+				</div>
+
+				<div class="flex items-center space-x-2">
+					<Switch bind:checked={skipBrightestLayer} id="skip-brightest-layer" />
+					<Label for="skip-brightest-layer">Skip Brightest Layer</Label>
+				</div>
+
+				<div class="flex items-center space-x-2">
+					<Switch bind:checked={animateByRows} id="animate-by-rows" />
+					<Label for="animate-by-rows">Animate by Rows</Label>
 				</div>
 
 				<div>
