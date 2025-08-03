@@ -69,7 +69,8 @@ const config = {
 				sans: [...fontFamily.sans]
 			}
 		}
-	}
+	},
+	plugins: [require('tailwindcss-spring')]
 };
 
 export default config;

@@ -10,6 +10,7 @@
 	import Palette from '$lib/halftone/Palette.svelte';
 	import { FlowPhase, flowStore } from '$lib/stores';
 	import { onDestroy, onMount } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import Histogram from './Histogram.svelte';
 	import type { PaletteType } from './newPalette';
 	import type { PixelData } from './types';
@@ -33,6 +34,7 @@
 	let brightnessAdjustment = 0; // Range from -100 to 100
 	let scalingMode = false; // New toggle for scaling mode
 	let darkMode = false;
+	let debug = false; // Debug mode toggle
 
 	// Global values
 	let pixelData: PixelData[] = [];
@@ -45,6 +47,8 @@
 	let animateFromTop = true;
 	let skipBrightestLayer = true;
 	let animateByRows = true;
+
+	let show = false;
 
 	function percentageToBrightnessMultiplier(percentage: number) {
 		return percentage * 200 - 100;
@@ -180,6 +184,9 @@
 	}
 
 	onMount(() => {
+		setTimeout(() => {
+			show = true;
+		}, 300);
 		// Create hidden canvas for image processing
 		canvas = document.createElement('canvas');
 		ctx = canvas.getContext('2d')!;
@@ -205,6 +212,7 @@
 		// Add paste event listener only in browser environment
 		if (browser) {
 			window.addEventListener('paste', handlePaste);
+			window.addEventListener('keydown', handleKeydown);
 		}
 	});
 
@@ -212,11 +220,20 @@
 	onDestroy(() => {
 		if (browser) {
 			window.removeEventListener('paste', handlePaste);
+			window.removeEventListener('keydown', handleKeydown);
 		}
 		if (animationFrameId) {
 			cancelAnimationFrame(animationFrameId);
 		}
 	});
+
+	function handleKeydown(event: KeyboardEvent) {
+		// Toggle debug mode when 'd' key is pressed
+		if (event.key === 'd' || event.key === 'D') {
+			debug = !debug;
+			console.log('Debug mode:', debug);
+		}
+	}
 
 	function handlePaste(event: ClipboardEvent) {
 		const items = event.clipboardData?.items;
@@ -1054,12 +1071,19 @@
 	}
 
 	function returnToWebcam() {
-		flowStore.set(FlowPhase.Webcam);
+		show = false;
+		setTimeout(() => {
+			flowStore.set(FlowPhase.Webcam);
+		}, 500);
 	}
 </script>
 
 <div class="grid grid-cols-3 gap-4 p-4">
-	<div class="col-span-2">
+	<div
+		class="col-span-2 {show
+			? 'translate-x-0 opacity-100'
+			: 'translate-x-[-100%] opacity-0'} spring-bounce-20 spring-duration-500"
+	>
 		<!-- svelte-ignore element_invalid_self_closing_tag -->
 		<div
 			style="height: {fitToScreen ? 'calc(100vh - 2rem)' : '100%'}"
@@ -1068,7 +1092,11 @@
 		/>
 	</div>
 
-	<div>
+	<div
+		class="{show
+			? 'translate-x-0 opacity-100'
+			: 'translate-x-[100%] opacity-0'} spring-bounce-30 spring-duration-500 delay-[10ms]"
+	>
 		<div class="flex sticky top-4 flex-col gap-4 mb-4 max-w-xl">
 			<div class="space-y-4">
 				<div class="flex flex-col gap-1.5 w-full max-w-sm">
@@ -1104,50 +1132,51 @@
 					<p class="text-sm text-muted-foreground">There may be a slight delay at smaller sizes.</p>
 				</div>
 
-				<div class="grid grid-cols-2 gap-y-2">
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={invertSource} id="invert-source" />
-						<Label for="invert-source">Invert Source Image</Label>
-					</div>
+				{#if debug}
+					<div class="grid grid-cols-2 gap-y-2">
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={invertSource} id="invert-source" />
+							<Label for="invert-source">Invert Source Image</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={fitToScreen} id="fit-to-screen" />
-						<Label for="fit-to-screen">Fit to Screen</Label>
-					</div>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={fitToScreen} id="fit-to-screen" />
+							<Label for="fit-to-screen">Fit to Screen</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={darkMode} id="dark-mode" />
-						<Label for="dark-mode">Dark Mode</Label>
-					</div>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={darkMode} id="dark-mode" />
+							<Label for="dark-mode">Dark Mode</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={scalingMode} id="scaling-mode" />
-						<Label for="scaling-mode">Scaling Mode</Label>
-					</div>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={scalingMode} id="scaling-mode" />
+							<Label for="scaling-mode">Scaling Mode</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={animateFromTop} id="animate-from-top" />
-						<Label for="animate-from-top">Animate from Top</Label>
-					</div>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={animateFromTop} id="animate-from-top" />
+							<Label for="animate-from-top">Animate from Top</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={skipBrightestLayer} id="skip-brightest-layer" />
-						<Label for="skip-brightest-layer">Skip Brightest Layer</Label>
-					</div>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={skipBrightestLayer} id="skip-brightest-layer" />
+							<Label for="skip-brightest-layer">Skip Brightest Layer</Label>
+						</div>
 
-					<div class="flex items-center space-x-2">
-						<Switch bind:checked={animateByRows} id="animate-by-rows" />
-						<Label for="animate-by-rows">Animate by Rows</Label>
+						<div class="flex items-center space-x-2">
+							<Switch bind:checked={animateByRows} id="animate-by-rows" />
+							<Label for="animate-by-rows">Animate by Rows</Label>
+						</div>
 					</div>
-				</div>
-
+				{/if}
 				<div>
 					<Button variant="outline" size="sm" on:click={returnToWebcam}>Return</Button>
 				</div>
 
 				<div class="flex gap-12">
 					<div class="flex flex-col justify-between py-1">
-						<div class="flex items-center gap-2 justify-between">
+						<div class="flex gap-2 justify-between items-center">
 							<svg
 								style="transform: rotate({brightnessAdjustment * 2}deg);"
 								width="28"
@@ -1166,7 +1195,7 @@
 								{brightnessAdjustment.toFixed(0)}
 							</span>
 						</div>
-						<p class="uppercase text-sm text-h-neutral-400">Brightness</p>
+						<p class="text-sm uppercase text-h-neutral-400">Brightness</p>
 					</div>
 					<div class="flex-1 flex-grow flex-shrink-0">
 						<Histogram bind:percentage={histogramPercentage} {pixelData} />
@@ -1189,25 +1218,27 @@
 					</div>
 				</div> -->
 
-				<div class="flex">
-					<div class="flex flex-col gap-1.5 w-full max-w-sm">
-						<Label for="source-upload">Source Image</Label>
-						<div class="space-y-2">
-							<Input
-								on:change={handleSourceImageUpload}
-								class="pt-1.5"
-								id="source-upload"
-								type="file"
-							/>
-							<p class="text-sm text-muted-foreground">
-								Or paste an image from your clipboard (Ctrl/Cmd + V)
-							</p>
+				{#if debug}
+					<div class="flex">
+						<div class="flex flex-col gap-1.5 w-full max-w-sm">
+							<Label for="source-upload">Source Image</Label>
+							<div class="space-y-2">
+								<Input
+									on:change={handleSourceImageUpload}
+									class="pt-1.5"
+									id="source-upload"
+									type="file"
+								/>
+								<p class="text-sm text-muted-foreground">
+									Or paste an image from your clipboard (Ctrl/Cmd + V)
+								</p>
+							</div>
+						</div>
+						<div>
+							<UploadProgress progress={uploadProgress} />
 						</div>
 					</div>
-					<div>
-						<UploadProgress progress={uploadProgress} />
-					</div>
-				</div>
+				{/if}
 
 				<div class="space-y-2">
 					<div class="flex justify-between items-center">

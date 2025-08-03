@@ -47,6 +47,9 @@ importers:
       svelte-radix:
         specifier: ^2.0.1
         version: 2.0.1(svelte@5.19.5)
+      tailwindcss-spring:
+        specifier: ^1.0.1
+        version: 1.0.1(tailwindcss@3.4.17)
       three:
         specifier: ^0.155.0
         version: 0.155.0
@@ -1845,6 +1848,11 @@ packages:
     peerDependencies:
       tailwindcss: '*'
 
+  tailwindcss-spring@1.0.1:
+    resolution: {integrity: sha512-v8ibKyVCgbFcHzP9EFSbsvR0vH7Vk2Skl9JnJ9HUrnA16NhjvI4SlV9Y4SkinL+4bNrm1XpftZwX1DAD1mNZFA==}
+    peerDependencies:
+      tailwindcss: '>=3.0.0 || insiders'
+
   tailwindcss@3.4.17:
     resolution: {integrity: sha512-w33E2aCvSDP0tW9RZuNXadXlkHXqFzSkQew/aIa2i/Sj8fThxwovwlXHSPXTbAHwEIhBFXAedUhP2tueAKP8Og==}
     engines: {node: '>=14.0.0'}
@@ -3561,6 +3569,10 @@ snapshots:
   tailwind-variants@1.0.0(tailwindcss@3.4.17):
     dependencies:
       tailwind-merge: 3.0.2
+      tailwindcss: 3.4.17
+
+  tailwindcss-spring@1.0.1(tailwindcss@3.4.17):
+    dependencies:
       tailwindcss: 3.4.17
 
   tailwindcss@3.4.17:

@@ -14,6 +14,13 @@
 	let error: string | null = null;
 	let detectionInterval: number;
 
+	// MediaPipe background removal
+	let selfieSegmentation: any;
+	let isMediaPipeLoaded = false;
+	let backgroundRemovalCanvas: HTMLCanvasElement;
+	let backgroundRemovalResolve: ((value: string) => void) | null = null;
+	let backgroundRemovalReject: ((reason?: any) => void) | null = null;
+
 	// Detection settings
 	let showBoundingBox = true;
 	let flipCamera = true; // Default to flipped (mirror mode)
@@ -75,6 +82,82 @@
 				'Failed to load face detection model. Please ensure the tiny face detector model is available.';
 			console.error('Failed to load model:', err);
 		}
+	}
+
+	async function loadMediaPipe(): Promise<void> {
+		if (!browser) return;
+
+		if (!(window as any).SelfieSegmentation) {
+			await new Promise<void>((resolve) => {
+				const script = document.createElement('script');
+				script.src =
+					'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js';
+				script.onload = () => resolve();
+				document.body.appendChild(script);
+			});
+		}
+
+		selfieSegmentation = new (window as any).SelfieSegmentation({
+			locateFile: (file: string) =>
+				`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+		});
+
+		selfieSegmentation.setOptions({ modelSelection: 1 });
+
+		// Set up the results callback once during initialization
+		selfieSegmentation.onResults((results: any) => {
+			console.log('Results received from MediaPipe');
+			if (!backgroundRemovalCanvas) {
+				backgroundRemovalCanvas = document.createElement('canvas');
+			}
+
+			const ctx = backgroundRemovalCanvas.getContext('2d')!;
+			backgroundRemovalCanvas.width = results.image.width;
+			backgroundRemovalCanvas.height = results.image.height;
+
+			ctx.clearRect(0, 0, backgroundRemovalCanvas.width, backgroundRemovalCanvas.height);
+			ctx.save();
+
+			// Draw the segmentation mask
+			ctx.drawImage(results.segmentationMask, 0, 0);
+			ctx.globalCompositeOperation = 'source-in';
+			ctx.drawImage(results.image, 0, 0);
+			ctx.restore();
+
+			// Convert to data URL and resolve the promise
+			const imageData = backgroundRemovalCanvas.toDataURL('image/png');
+
+			if (backgroundRemovalResolve) {
+				backgroundRemovalResolve(imageData);
+				backgroundRemovalResolve = null;
+				backgroundRemovalReject = null;
+			}
+		});
+
+		isMediaPipeLoaded = true;
+		console.log('MediaPipe selfie segmentation loaded successfully');
+	}
+
+	async function removeBackgroundFromCanvas(sourceCanvas: HTMLCanvasElement): Promise<string> {
+		console.log('Removing background from canvas!!');
+		if (!isMediaPipeLoaded) {
+			throw new Error('MediaPipe not loaded');
+		}
+
+		return new Promise((resolve, reject) => {
+			// Store the resolve/reject functions for the callback to use
+			backgroundRemovalResolve = resolve;
+			backgroundRemovalReject = reject;
+
+			console.log('About to send canvas to MediaPipe');
+			// Send the canvas image for processing
+			selfieSegmentation.send({ image: sourceCanvas }).catch((err: any) => {
+				console.error('MediaPipe send error:', err);
+				backgroundRemovalResolve = null;
+				backgroundRemovalReject = null;
+				reject(err);
+			});
+		});
 	}
 
 	async function startWebcam() {
@@ -241,7 +324,7 @@
 	}
 
 	onMount(async () => {
-		await loadModels();
+		await Promise.all([loadModels(), loadMediaPipe()]);
 
 		// Check if camera permissions are already granted and auto-start
 		if (browser && navigator.permissions) {
@@ -260,7 +343,9 @@
 	});
 
 	async function captureBoxImages() {
+		console.log('Capturing box images');
 		if (!video || !canvas || detectionResults.length === 0) return;
+		console.log('Video, canvas, and detection results are ready');
 
 		isCapturing = true;
 		const newCapturedImages: string[] = [];
@@ -335,11 +420,23 @@
 				);
 			}
 
-			// Convert to data URL and dispatch event
-			const imageData = captureCanvas.toDataURL('image/png');
+			// Apply background removal if MediaPipe is loaded
+			let finalImageData: string;
+			if (isMediaPipeLoaded) {
+				console.log('Applying background removal');
+				try {
+					finalImageData = await removeBackgroundFromCanvas(captureCanvas);
+					console.log('Background removal applied successfully');
+				} catch (err) {
+					console.warn('Failed to apply background removal, using original image:', err);
+					finalImageData = captureCanvas.toDataURL('image/png');
+				}
+			} else {
+				finalImageData = captureCanvas.toDataURL('image/png');
+			}
 
 			// Create blob URL for internal gallery display
-			fetch(imageData)
+			fetch(finalImageData)
 				.then((res) => res.blob())
 				.then((blob) => {
 					const url = URL.createObjectURL(blob);
@@ -347,8 +444,8 @@
 					capturedImages = [...capturedImages, ...newCapturedImages];
 				});
 
-			// Dispatch capture event with the image data
-			dispatch('capture', imageData);
+			// Dispatch capture event with the processed image data
+			dispatch('capture', finalImageData);
 		} catch (error) {
 			console.error('Error capturing images:', error);
 		} finally {

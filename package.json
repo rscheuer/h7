@@ -54,6 +54,7 @@
 		"resolve-lygia": "^1.0.4",
 		"splitting": "^1.0.6",
 		"svelte-radix": "^2.0.1",
+		"tailwindcss-spring": "^1.0.1",
 		"three": "^0.155.0"
 	}
 }
