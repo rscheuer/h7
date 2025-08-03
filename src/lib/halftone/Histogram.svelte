@@ -159,7 +159,7 @@
 	});
 </script>
 
-<div class="w-full h-full p-0">
+<div class="p-0 w-full h-full">
 	{#if pixelData.length > 0}
 		<div class="">
 			<div
@@ -194,12 +194,12 @@
 					<div class="absolute w-4 h-[7px] -top-px left-1/2 mx-auto bg-white -translate-x-1/2" />
 					<div class="absolute w-4 h-[7px] -bottom-px left-1/2 mx-auto bg-white -translate-x-1/2" />
 				</div> -->
-				<div class="absolute w-full h-full inset-0">
+				<div class="absolute inset-0 w-full h-full">
 					<CustomSlider
 						bind:value={percentage}
 						trackColor="transparent"
 						thumbColor="white"
-						thumbWidth="10px"
+						thumbWidth="4px"
 						thumbHeight="60px"
 						min={0}
 						max={1}
@@ -210,9 +210,9 @@
 		</div>
 
 		<!-- Raw data display -->
-		<!-- <details class="mt-4 hidden">
-			<summary class="cursor-pointer text-sm font-medium">Raw Histogram Data</summary>
-			<div class="mt-2 p-2 bg-gray-100 rounded text-xs font-mono">
+		<!-- <details class="hidden mt-4">
+			<summary class="text-sm font-medium cursor-pointer">Raw Histogram Data</summary>
+			<div class="p-2 mt-2 font-mono text-xs bg-gray-100 rounded">
 				<div>Histogram: {JSON.stringify(histogram)}</div>
 				<div class="mt-1">
 					Ranges: {JSON.stringify(
@@ -222,6 +222,6 @@
 			</div>
 		</details> -->
 	{:else}
-		<div class="text-gray-500 text-center py-8">No pixel data available</div>
+		<div class="py-8 text-center text-gray-500">No pixel data available</div>
 	{/if}
 </div>

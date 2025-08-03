@@ -1080,9 +1080,7 @@
 
 <div class="grid grid-cols-3 gap-4 p-4">
 	<div
-		class="col-span-2 {show
-			? 'translate-x-0 opacity-100'
-			: 'translate-x-[-100%] opacity-0'} spring-bounce-20 spring-duration-500"
+		class="col-span-2 {show ? ' opacity-100' : ' opacity-0'} spring-bounce-20 spring-duration-500"
 	>
 		<!-- svelte-ignore element_invalid_self_closing_tag -->
 		<div

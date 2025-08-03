@@ -13,6 +13,7 @@
 	let isDetecting = false;
 	let error: string | null = null;
 	let detectionInterval: number;
+	let boxColor = '#0000ff'; // #00ff00
 
 	// MediaPipe background removal
 	let selfieSegmentation: any;
@@ -39,6 +40,8 @@
 	// Capture functionality
 	let capturedImages: string[] = [];
 	let isCapturing = false;
+
+	let done = false;
 
 	const expandBoundingBox = (box: any) => {
 		const { x, y, width, height } = box;
@@ -308,12 +311,12 @@
 
 			// Draw bounding box
 			if (showBoundingBox) {
-				ctx.strokeStyle = '#00ff00';
+				ctx.strokeStyle = boxColor;
 				ctx.lineWidth = 2;
 				ctx.strokeRect(x, y, width, height);
 
 				// Draw confidence score
-				ctx.fillStyle = '#00ff00';
+				ctx.fillStyle = boxColor;
 				ctx.font = '14px Arial';
 				ctx.fillText(`${Math.round(detection.score * 100)}%`, x, y - 5);
 			}
@@ -445,7 +448,10 @@
 				});
 
 			// Dispatch capture event with the processed image data
-			dispatch('capture', finalImageData);
+			done = true;
+			setTimeout(() => {
+				dispatch('capture', finalImageData);
+			}, 200);
 		} catch (error) {
 			console.error('Error capturing images:', error);
 		} finally {
@@ -483,8 +489,11 @@
 <div bind:this={container} class="relative w-full h-screen">
 	<!-- Controls -->
 	<div
-		class:!top-12={stream}
-		class="absolute top-1/2 left-1/2 z-20 p-3 mb-4 space-y-3 w-full max-w-sm rounded-2xl transition-all duration-300 -translate-x-1/2 -translate-y-1/2 bg-h-neutral-700"
+		class="absolute {!stream
+			? 'top-1/2'
+			: 'top-12'} left-1/2 z-20 p-3 mb-4 space-y-3 w-full max-w-sm rounded-2xl -translate-x-1/2
+			 {!done ? '-translate-y-1/2' : '-translate-y-[200px]'}
+			 spring-bounce-20 spring-duration-300 bg-h-neutral-700"
 	>
 		<div class="flex gap-2 justify-between w-full">
 			<div class="flex gap-2">
@@ -540,14 +549,14 @@
 					: 'No Face Detected'}
 			</button> -->
 
-			{#if capturedImages.length > 0}
+			<!-- {#if capturedImages.length > 0}
 				<button
 					class="px-4 py-2 text-white bg-red-500 rounded hover:bg-red-600"
 					on:click={clearCapturedImages}
 				>
 					Clear ({capturedImages.length})
 				</button>
-			{/if}
+			{/if} -->
 		</div>
 	</div>
 
@@ -578,8 +587,10 @@
 		<button
 			on:click={captureBoxImages}
 			disabled={!stream || !isDetecting || detectionResults.length === 0 || isCapturing}
+			class:translate-y-[200px]={!stream || done}
+			class:delay-100={stream}
 			aria-label="capture"
-			class="p-1 rounded-2xl border-2 border-white pointer-events-auto group"
+			class="p-1 rounded-2xl border-2 border-white delay-100 pointer-events-auto group spring-bounce-30 spring-duration-300"
 		>
 			<!-- svelte-ignore element_invalid_self_closing_tag -->
 			<div class="bg-red-500 w-12 h-10 rounded-[10px] group-disabled:opacity-50" />
@@ -587,13 +598,16 @@
 	</div>
 
 	<!-- Video and Canvas Container -->
-	<div class="overflow-hidden absolute inset-0 bg-black">
+	<div
+		class:opacity-0={done}
+		class="overflow-hidden absolute inset-0 bg-black transition-all duration-300"
+	>
 		<!-- Video Element -->
 		<!-- svelte-ignore element_invalid_self_closing_tag -->
 		<video
-			style="filter: saturate(0.0);"
+			style="filter: grayscale(100%) sepia(24%) hue-rotate(182deg);"
 			bind:this={video}
-			class="w-full h-full object-cover {flipCamera ? 'scale-x-[-1]' : ''}"
+			class="w-full h-full object-cover {flipCamera ? 'scale-x-[-1]' : ''} "
 			autoplay
 			muted
 			playsinline
