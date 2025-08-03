@@ -17,6 +17,7 @@ const config = {
 			colors: {
 				h: {
 					neutral: {
+						logo: '#A2A4A6',
 						100: '#ffffff',
 						200: '#E4E4E4',
 						300: '#808081',

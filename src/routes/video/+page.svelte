@@ -1,5 +1,4 @@
 <script lang="ts">
-	import SVGHalftone from '$lib/halftone/SVGHalftone.svelte';
 	import VideoHalftone from '$lib/halftone/VideoHalftone.svelte';
 </script>
 

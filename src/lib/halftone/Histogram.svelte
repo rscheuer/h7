@@ -161,7 +161,7 @@
 
 <div class="w-full h-full p-0">
 	{#if pixelData.length > 0}
-		<div class="mb-4">
+		<div class="">
 			<div
 				role="slider"
 				aria-valuenow={0}
