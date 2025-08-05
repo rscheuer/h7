@@ -46,6 +46,7 @@
 		"@types/prismjs": "^1.26.3",
 		"@vercel/analytics": "^1.5.0",
 		"face-api.js": "^0.22.2",
+		"gif.js.optimized": "^1.0.1",
 		"gsap": "^3.12.7",
 		"highlightjs-svelte": "^1.0.6",
 		"ogl": "^1.0.10",

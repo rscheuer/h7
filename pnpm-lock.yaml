@@ -23,6 +23,9 @@ importers:
       face-api.js:
         specifier: ^0.22.2
         version: 0.22.2
+      gif.js.optimized:
+        specifier: ^1.0.1
+        version: 1.0.1
       gsap:
         specifier: ^3.12.7
         version: 3.12.7
@@ -1150,6 +1153,9 @@ packages:
 
   function-bind@1.1.2:
     resolution: {integrity: sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==}
+
+  gif.js.optimized@1.0.1:
+    resolution: {integrity: sha512-IS0F42Xken6lp/iR4irgG4r52tvxRkEKsXGZmlUHUOb00SWNMezJOJwkVaJk2MLW53rqzMbPnnBtEhs9hcMJ9w==}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -2967,6 +2973,8 @@ snapshots:
     optional: true
 
   function-bind@1.1.2: {}
+
+  gif.js.optimized@1.0.1: {}
 
   glob-parent@5.1.2:
     dependencies:

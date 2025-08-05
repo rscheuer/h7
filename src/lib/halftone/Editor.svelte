@@ -11,6 +11,7 @@
 	import { FlowPhase, flowStore } from '$lib/stores';
 	import { onDestroy, onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
+	import ExportGif from './ExportGif.svelte';
 	import Histogram from './Histogram.svelte';
 	import type { PaletteType } from './newPalette';
 	import type { PixelData } from './types';
@@ -40,6 +41,7 @@
 	let pixelData: PixelData[] = [];
 	let isUploading = false;
 	let uploadProgress = -1;
+	let userHasUploadedImage = false; // Flag to track if user has manually uploaded an image
 	let histogramPercentage = 0.5;
 	let isAnimating = false;
 	let animationFrameId: number;
@@ -49,6 +51,8 @@
 	let animateByRows = true;
 
 	let show = false;
+
+	$: console.log('brightness change', brightnessAdjustment);
 
 	function percentageToBrightnessMultiplier(percentage: number) {
 		return percentage * 200 - 100;
@@ -257,6 +261,7 @@
 					reader.onload = (e) => {
 						// File read complete: 25%
 						uploadProgress = 25;
+						userHasUploadedImage = true; // Mark that user uploaded an image
 						loadImage(e.target?.result as string);
 						setTimeout(() => {
 							isUploading = false;
@@ -959,6 +964,7 @@
 			reader.onload = (e) => {
 				// File read complete: 25%
 				uploadProgress = 25;
+				userHasUploadedImage = true; // Mark that user uploaded an image
 				loadImage(e.target?.result as string);
 			};
 			reader.readAsDataURL(file);
@@ -979,6 +985,10 @@
 	function exportSVG() {
 		// SVG export is no longer supported in canvas mode
 		console.warn('SVG export not available in canvas mode');
+	}
+
+	function exportGIF() {
+		console.log('export GIF');
 	}
 
 	function exportPNG() {
@@ -1056,8 +1066,8 @@
 		shouldAnimate = true; // Enable animation for palette change
 	}
 
-	// Reactive: Load new image when defaultImageUrl prop changes
-	$: if (defaultImageUrl && sourceImg) {
+	// Reactive: Load new image when defaultImageUrl prop changes (only if user hasn't uploaded their own image)
+	$: if (defaultImageUrl && sourceImg && !userHasUploadedImage) {
 		loadImage(defaultImageUrl);
 	}
 
@@ -1230,6 +1240,17 @@
 								<p class="text-sm text-muted-foreground">
 									Or paste an image from your clipboard (Ctrl/Cmd + V)
 								</p>
+								{#if userHasUploadedImage && defaultImageUrl}
+									<button
+										class="text-sm text-blue-500 underline hover:text-blue-600"
+										on:click={() => {
+											userHasUploadedImage = false;
+											loadImage(defaultImageUrl);
+										}}
+									>
+										Reset to default image
+									</button>
+								{/if}
 							</div>
 						</div>
 						<div>
@@ -1260,7 +1281,7 @@
 					</div>
 				</div>
 
-				<div>
+				<div class="flex gap-2">
 					<Popover.Root>
 						<Popover.Trigger>
 							<Button variant="default" size="default">Export Artwork</Button>
@@ -1269,6 +1290,22 @@
 							<div class="flex flex-col gap-2">
 								<Label>SVG Export</Label>
 								<Button id="svg" variant="default" size="sm" on:click={exportSVG}>SVG</Button>
+							</div>
+							<div class="flex flex-col gap-2">
+								<Label>GIF Export</Label>
+								<ExportGif
+									ctx={outputCtx}
+									bind:brightness={brightnessAdjustment}
+									brightnessMin={-100}
+									brightnessMax={100}
+									brightnessStep={4}
+									boomerang={true}
+									onBrightnessChange={async () => {
+										updateOutput();
+										// Wait a bit for the canvas to actually update
+										await new Promise((resolve) => requestAnimationFrame(resolve));
+									}}
+								/>
 							</div>
 							<div class="flex flex-col gap-2">
 								<Label>PNG Export</Label>
