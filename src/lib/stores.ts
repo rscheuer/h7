@@ -7,4 +7,4 @@ export enum FlowPhase {
 	Test = 'test'
 }
 
-export const flowStore = writable<FlowPhase>(FlowPhase.Webcam);
+export const flowStore = writable<FlowPhase>(FlowPhase.Editor);

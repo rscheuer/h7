@@ -6,7 +6,9 @@
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
-	import { newPalettes } from '$lib/halftone/newPalette';
+	import Freq from '$lib/extras/Freq.svelte';
+	import Slider from '$lib/extras/Slider.svelte';
+	import { colorPalettes, newPalettes } from '$lib/halftone/newPalette';
 	import Palette from '$lib/halftone/Palette.svelte';
 	import { FlowPhase, flowStore } from '$lib/stores';
 	import { onDestroy, onMount } from 'svelte';
@@ -51,6 +53,8 @@
 	let animateByRows = true;
 
 	let show = false;
+
+	let sliderValues = [0.5, 0.3, 0.3];
 
 	$: console.log('brightness change', brightnessAdjustment);
 
@@ -1086,16 +1090,32 @@
 			flowStore.set(FlowPhase.Webcam);
 		}, 500);
 	}
+
+	function handleSlidersChange(sliders: number[]) {
+		let brightness = sliders[0];
+		let size = sliders[1];
+		let color = sliders[2];
+
+		brightnessAdjustment = brightness * 200 - 100;
+		pixelSize = Math.round(size * 20) + 10;
+
+		console.log('brightness', brightness);
+		console.log('size', size);
+		console.log('color', color);
+	}
+
+	$: handleSlidersChange(sliderValues);
 </script>
 
-<div class="grid grid-cols-3 gap-4 p-4">
+<div class="grid gap-4 p-4 md:grid-cols-[1fr_20rem]">
 	<div
-		class="col-span-2 {show ? ' opacity-100' : ' opacity-0'} spring-bounce-20 spring-duration-500"
+		class="col-span-1 {show ? ' opacity-100' : ' opacity-0'} spring-bounce-20 spring-duration-500"
 	>
 		<!-- svelte-ignore element_invalid_self_closing_tag -->
-		<div
-			style="height: {fitToScreen ? 'calc(100vh - 2rem)' : '100%'}"
-			class="flex justify-center items-center w-full"
+		<divdD
+			class="flex justify-center items-center w-full {fitToScreen
+				? 'md:h-[calc(100vh-2rem)]'
+				: 'h-auto'}"
 			bind:this={container}
 		/>
 	</div>
@@ -1103,43 +1123,52 @@
 	<div
 		class="{show
 			? 'translate-x-0 opacity-100'
-			: 'translate-x-[100%] opacity-0'} spring-bounce-30 spring-duration-500 delay-[10ms]"
+			: 'translate-x-[100%] opacity-0'} spring-bounce-30 spring-duration-500 delay-[10ms] w-full"
 	>
 		<div class="flex sticky top-4 flex-col gap-4 mb-4 max-w-xl">
 			<div class="space-y-4">
-				<div class="flex flex-col gap-1.5 w-full max-w-sm">
-					<Label for="pixelSize">Pixel Size</Label>
-					<div class="flex w-full max-w-[300px] items-center space-x-2">
-						<Input
-							class="w-full max-w-[100px]"
-							bind:value={pixelSize}
-							type="number"
-							min="5"
-							id="pixelSize"
-							placeholder="20"
-						/>
-						<div class="flex gap-1 items-center">
-							<Button
-								variant="outline"
-								size="icon"
-								class="rounded-full"
-								on:click={() => (pixelSize = Math.max(5, pixelSize - 1))}
-							>
-								-
-							</Button>
-							<Button
-								variant="outline"
-								size="icon"
-								class="rounded-full"
-								on:click={() => (pixelSize = Math.min(50, pixelSize + 1))}
-							>
-								+
-							</Button>
-						</div>
-					</div>
-					<p class="text-sm text-muted-foreground">There may be a slight delay at smaller sizes.</p>
+				<div class="hidden md:block">
+					<Freq />
 				</div>
-
+				<div>
+					<Slider bind:sliderValues />
+				</div>
+				{#if false}
+					<div class="flex flex-col gap-1.5 w-full max-w-sm">
+						<Label for="pixelSize">Pixel Size</Label>
+						<div class="flex w-full max-w-[300px] items-center space-x-2">
+							<Input
+								class="w-full max-w-[100px]"
+								bind:value={pixelSize}
+								type="number"
+								min="5"
+								id="pixelSize"
+								placeholder="20"
+							/>
+							<div class="flex gap-1 items-center">
+								<Button
+									variant="outline"
+									size="icon"
+									class="rounded-full"
+									on:click={() => (pixelSize = Math.max(5, pixelSize - 1))}
+								>
+									-
+								</Button>
+								<Button
+									variant="outline"
+									size="icon"
+									class="rounded-full"
+									on:click={() => (pixelSize = Math.min(50, pixelSize + 1))}
+								>
+									+
+								</Button>
+							</div>
+						</div>
+						<p class="text-sm text-muted-foreground">
+							There may be a slight delay at smaller sizes.
+						</p>
+					</div>
+				{/if}
 				{#if debug}
 					<div class="grid grid-cols-2 gap-y-2">
 						<div class="flex items-center space-x-2">
@@ -1182,34 +1211,35 @@
 					<Button variant="outline" size="sm" on:click={returnToWebcam}>Return</Button>
 				</div>
 
-				<div class="flex gap-12">
-					<div class="flex flex-col justify-between py-1">
-						<div class="flex gap-2 justify-between items-center">
-							<svg
-								style="transform: rotate({brightnessAdjustment * 2}deg);"
-								width="28"
-								height="28"
-								viewBox="0 0 28 28"
-								fill="none"
-								xmlns="http://www.w3.org/2000/svg"
-							>
-								<path
-									d="M13.4707 21.9834C13.6449 21.9946 13.8214 22 14 22V28C13.6919 28 13.3862 27.9884 13.083 27.9688L13.4707 21.9834ZM14.916 27.9688C14.6132 27.9883 14.3078 28 14 28V22C14.1786 22 14.3551 21.9946 14.5293 21.9834L14.916 27.9688ZM10.4648 21.1797C10.7751 21.333 11.0963 21.467 11.4268 21.5791L9.49805 27.2598C8.91598 27.0622 8.35147 26.8268 7.80664 26.5576L10.4648 21.1797ZM20.1924 26.5576C19.6475 26.8268 19.0831 27.0622 18.501 27.2598L16.5732 21.5791C16.9037 21.467 17.2249 21.333 17.5352 21.1797L20.1924 26.5576ZM7.9834 19.2734C8.21469 19.537 8.46304 19.7853 8.72656 20.0166L4.76953 24.5254C4.30993 24.122 3.87697 23.6891 3.47363 23.2295L7.9834 19.2734ZM24.5254 23.2295C24.122 23.6891 23.6891 24.122 23.2295 24.5254L19.2734 20.0166C19.537 19.7853 19.7853 19.537 20.0166 19.2734L24.5254 23.2295ZM6.4209 16.5732C6.53304 16.9037 6.66705 17.2249 6.82031 17.5352L1.44141 20.1924C1.17225 19.6475 0.936761 19.083 0.739258 18.501L6.4209 16.5732ZM27.2598 18.501C27.0622 19.0831 26.8268 19.6475 26.5576 20.1924L21.1797 17.5352C21.333 17.2249 21.467 16.9037 21.5791 16.5732L27.2598 18.501ZM0 14C0 13.6919 0.0106717 13.3862 0.0302734 13.083L6.0166 13.4707C6.00535 13.6449 6 13.8214 6 14C6 14.1786 6.00535 14.3551 6.0166 14.5293L0.0302734 14.916C0.0107133 14.6132 0 14.3078 0 14ZM28 14C28 14.3078 27.9883 14.6132 27.9688 14.916L21.9834 14.5293C21.9946 14.3551 22 14.1786 22 14C22 13.8214 21.9946 13.6449 21.9834 13.4707L27.9688 13.083C27.9884 13.3862 28 13.6919 28 14ZM6.82031 10.4648C6.66705 10.7751 6.53304 11.0963 6.4209 11.4268L0.739258 9.49805C0.936794 8.91601 1.17222 8.35144 1.44141 7.80664L6.82031 10.4648ZM26.5576 7.80664C26.8268 8.35147 27.0622 8.91598 27.2598 9.49805H27.2607L21.5791 11.4268C21.467 11.0963 21.333 10.7751 21.1797 10.4648L26.5576 7.80664ZM8.72656 7.9834C8.46304 8.21469 8.21469 8.46304 7.9834 8.72656L3.47363 4.76953C3.87697 4.30993 4.30993 3.87697 4.76953 3.47363L8.72656 7.9834ZM23.2295 3.47363C23.6891 3.87697 24.122 4.30993 24.5254 4.76953L20.0166 8.72656C19.7853 8.46304 19.537 8.21469 19.2734 7.9834L23.2295 3.47363ZM11.4268 6.4209C11.0963 6.53304 10.7751 6.66705 10.4648 6.82031L7.80664 1.44141C8.35144 1.17222 8.91601 0.936794 9.49805 0.739258L11.4268 6.4209ZM18.501 0.739258C19.083 0.936761 19.6475 1.17225 20.1924 1.44141L17.5352 6.82031C17.2249 6.66705 16.9037 6.53304 16.5732 6.4209L18.501 0.739258ZM14 0C14.3078 0 14.6132 0.0107133 14.916 0.0302734L14.5293 6.0166C14.3551 6.00535 14.1786 6 14 6C13.8214 6 13.6449 6.00535 13.4707 6.0166L13.083 0.0302734C13.3862 0.0106717 13.6919 0 14 0Z"
-									fill="white"
-								/>
-							</svg>
+				{#if false}
+					<div class="flex gap-12">
+						<div class="flex flex-col justify-between py-1">
+							<div class="flex gap-2 justify-between items-center">
+								<svg
+									style="transform: rotate({brightnessAdjustment * 2}deg);"
+									width="28"
+									height="28"
+									viewBox="0 0 28 28"
+									fill="none"
+									xmlns="http://www.w3.org/2000/svg"
+								>
+									<path
+										d="M13.4707 21.9834C13.6449 21.9946 13.8214 22 14 22V28C13.6919 28 13.3862 27.9884 13.083 27.9688L13.4707 21.9834ZM14.916 27.9688C14.6132 27.9883 14.3078 28 14 28V22C14.1786 22 14.3551 21.9946 14.5293 21.9834L14.916 27.9688ZM10.4648 21.1797C10.7751 21.333 11.0963 21.467 11.4268 21.5791L9.49805 27.2598C8.91598 27.0622 8.35147 26.8268 7.80664 26.5576L10.4648 21.1797ZM20.1924 26.5576C19.6475 26.8268 19.0831 27.0622 18.501 27.2598L16.5732 21.5791C16.9037 21.467 17.2249 21.333 17.5352 21.1797L20.1924 26.5576ZM7.9834 19.2734C8.21469 19.537 8.46304 19.7853 8.72656 20.0166L4.76953 24.5254C4.30993 24.122 3.87697 23.6891 3.47363 23.2295L7.9834 19.2734ZM24.5254 23.2295C24.122 23.6891 23.6891 24.122 23.2295 24.5254L19.2734 20.0166C19.537 19.7853 19.7853 19.537 20.0166 19.2734L24.5254 23.2295ZM6.4209 16.5732C6.53304 16.9037 6.66705 17.2249 6.82031 17.5352L1.44141 20.1924C1.17225 19.6475 0.936761 19.083 0.739258 18.501L6.4209 16.5732ZM27.2598 18.501C27.0622 19.0831 26.8268 19.6475 26.5576 20.1924L21.1797 17.5352C21.333 17.2249 21.467 16.9037 21.5791 16.5732L27.2598 18.501ZM0 14C0 13.6919 0.0106717 13.3862 0.0302734 13.083L6.0166 13.4707C6.00535 13.6449 6 13.8214 6 14C6 14.1786 6.00535 14.3551 6.0166 14.5293L0.0302734 14.916C0.0107133 14.6132 0 14.3078 0 14ZM28 14C28 14.3078 27.9883 14.6132 27.9688 14.916L21.9834 14.5293C21.9946 14.3551 22 14.1786 22 14C22 13.8214 21.9946 13.6449 21.9834 13.4707L27.9688 13.083C27.9884 13.3862 28 13.6919 28 14ZM6.82031 10.4648C6.66705 10.7751 6.53304 11.0963 6.4209 11.4268L0.739258 9.49805C0.936794 8.91601 1.17222 8.35144 1.44141 7.80664L6.82031 10.4648ZM26.5576 7.80664C26.8268 8.35147 27.0622 8.91598 27.2598 9.49805H27.2607L21.5791 11.4268C21.467 11.0963 21.333 10.7751 21.1797 10.4648L26.5576 7.80664ZM8.72656 7.9834C8.46304 8.21469 8.21469 8.46304 7.9834 8.72656L3.47363 4.76953C3.87697 4.30993 4.30993 3.87697 4.76953 3.47363L8.72656 7.9834ZM23.2295 3.47363C23.6891 3.87697 24.122 4.30993 24.5254 4.76953L20.0166 8.72656C19.7853 8.46304 19.537 8.21469 19.2734 7.9834L23.2295 3.47363ZM11.4268 6.4209C11.0963 6.53304 10.7751 6.66705 10.4648 6.82031L7.80664 1.44141C8.35144 1.17222 8.91601 0.936794 9.49805 0.739258L11.4268 6.4209ZM18.501 0.739258C19.083 0.936761 19.6475 1.17225 20.1924 1.44141L17.5352 6.82031C17.2249 6.66705 16.9037 6.53304 16.5732 6.4209L18.501 0.739258ZM14 0C14.3078 0 14.6132 0.0107133 14.916 0.0302734L14.5293 6.0166C14.3551 6.00535 14.1786 6 14 6C13.8214 6 13.6449 6.00535 13.4707 6.0166L13.083 0.0302734C13.3862 0.0106717 13.6919 0 14 0Z"
+										fill="white"
+									/>
+								</svg>
 
-							<span class="text-xl">
-								{brightnessAdjustment.toFixed(0)}
-							</span>
+								<span class="text-xl">
+									{brightnessAdjustment.toFixed(0)}
+								</span>
+							</div>
+							<p class="text-sm uppercase text-h-neutral-400">Brightness</p>
 						</div>
-						<p class="text-sm uppercase text-h-neutral-400">Brightness</p>
+						<div class="flex-1 flex-grow flex-shrink-0">
+							<Histogram bind:percentage={histogramPercentage} {pixelData} />
+						</div>
 					</div>
-					<div class="flex-1 flex-grow flex-shrink-0">
-						<Histogram bind:percentage={histogramPercentage} {pixelData} />
-					</div>
-				</div>
-
+				{/if}
 				<!-- <div class="flex flex-col gap-1.5 w-full max-w-sm">
 					<Label for="brightness">Brightness Adjustment</Label>
 					<div class="flex w-full max-w-[300px] items-center space-x-2">
