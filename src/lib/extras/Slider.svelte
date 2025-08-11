@@ -1,46 +1,38 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 
 	// Constants
 	const COLS = 64;
-	const SLIDERS = 3;
+	const SLIDERS = 1;
 	const W = 600;
 	const SLIDER_H = 120;
-	const H = SLIDERS * SLIDER_H + 20;
+	const H = SLIDERS * SLIDER_H;
 
 	// Reactive variables
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	let animationId: number;
 
+	// Props
+	export let waveType: 0 | 1 | 2 = 0; // Controls which wave pattern to use (0=ramp, 1=organic, 2=sine)
+	export let initialValue: number = 0.5; // Initial slider value (0-1)
+
+	// Event dispatcher
+	const dispatch = createEventDispatcher<{
+		change: { value: number };
+	}>();
+
 	// State
 	const sliderColors = ['green', 'orangered', '#525aff'];
-	const mouseX = Array(SLIDERS).fill(W * 0.5);
+	const mouseX = Array(SLIDERS).fill(W * initialValue);
 	let t = 0;
 	let isDragging = false;
 	let activeSlider = -1;
 
-	// Exported values (0-1 normalized)
-	export let sliderValues = [0, 0.3, 0.3]; // Initial values matching mouseX default
-
-	// $: console.log(sliderValues);
-
-	// Reactive statement to update exported values when mouseX changes
+	// Reactive statement to dispatch value changes when mouseX changes
 	$: {
-		for (let i = 0; i < SLIDERS; i++) {
-			sliderValues[i] = Math.min(1, Math.max(0, mouseX[i] / W));
-		}
-	}
-
-	// Reactive statement to sync external sliderValues changes back to mouseX
-	$: {
-		for (let i = 0; i < SLIDERS; i++) {
-			const newMouseX = sliderValues[i] * W;
-			if (Math.abs(mouseX[i] - newMouseX) > 0.1) {
-				// Avoid infinite loops with small threshold
-				mouseX[i] = newMouseX;
-			}
-		}
+		const normalizedValue = Math.min(1, Math.max(0, mouseX[0] / W));
+		dispatch('change', { value: normalizedValue });
 	}
 
 	// Generate token data (from original HTML)
@@ -183,10 +175,10 @@
 				const xNorm = i / COLS;
 				let h01: number;
 
-				if (s === 0) {
+				if (waveType === 0) {
 					// Green: simple ramp
 					h01 = Math.pow(xNorm, 0.5 + sliderNorm * 2);
-				} else if (s === 1) {
+				} else if (waveType === 1) {
 					// Orange: organic histogram (frequency control)
 					const freq = 1 + sliderNorm * 9;
 					const waveBase = Math.sin(xNorm * freq * Math.PI * 2 + t);
@@ -213,7 +205,7 @@
 					if (i === sliderCol) {
 						drawRoundedRect(x, y, pixelW, pixelH - 1, r, '#ccc');
 					} else {
-						const color = p < activeRows ? sliderColors[s] : '#333333';
+						const color = p < activeRows ? sliderColors[waveType] : '#333333';
 						drawRoundedRect(x, y, pixelW, pixelH - 1, r, color);
 					}
 				}

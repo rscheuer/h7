@@ -33,6 +33,7 @@
 	let pixelSize = 14; // Size of each "pixel" in the output
 	let invertSource = true;
 	let selectedPalette: PaletteType | null = null;
+	let currentColorSchemeKey: string | null = null;
 	let minWidth = 1080;
 	let fitToScreen = true;
 	let brightnessAdjustment = 0; // Range from -100 to 100
@@ -199,7 +200,7 @@
 		}, 300);
 		// Create hidden canvas for image processing
 		canvas = document.createElement('canvas');
-		ctx = canvas.getContext('2d')!;
+		ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
 		// Create output canvas
 		outputCanvas = document.createElement('canvas');
@@ -1052,11 +1053,17 @@
 	async function swapColorScheme(colorPaletteKey?: string) {
 		if (!selectedPalette) return;
 
+		// Early return if trying to swap to the same color scheme
+		if (colorPaletteKey && colorPaletteKey === currentColorSchemeKey) {
+			return;
+		}
+
 		// Get a random color palette if no key is provided
 		let targetPalette;
 		if (colorPaletteKey) {
 			targetPalette = colorPalettes.find((p) => p.key === colorPaletteKey);
 		} else {
+			console.log('no key');
 			// Get a random palette different from current one
 			const availablePalettes = colorPalettes.filter((p) => p.key !== selectedPalette?.key);
 			targetPalette = availablePalettes[Math.floor(Math.random() * availablePalettes.length)];
@@ -1091,6 +1098,8 @@
 		}));
 
 		tileImages = newTileImages;
+		// Update current color scheme key
+		currentColorSchemeKey = targetPalette.key;
 		// No animation needed for color swapping
 	}
 
@@ -1115,6 +1124,8 @@
 		}));
 
 		tileImages = newTileImages;
+		// Update current color scheme key (use palette key or generate one based on colors)
+		currentColorSchemeKey = palette.key || null;
 		shouldAnimate = true; // Enable animation for palette change
 	}
 
@@ -1139,20 +1150,35 @@
 		}, 500);
 	}
 
-	function handleSlidersChange(sliders: number[]) {
-		let brightness = sliders[0];
-		let size = sliders[1];
-		let color = sliders[2];
+	// function handleSlidersChange(sliders: number[]) {
+	// 	let brightness = sliders[0];
+	// 	let size = sliders[1];
+	// 	let color = sliders[2];
 
-		brightnessAdjustment = brightness * 200 - 100;
-		pixelSize = Math.round(size * 20) + 10;
+	// 	brightnessAdjustment = brightness * 200 - 100;
+	// 	pixelSize = Math.round(size * 20) + 10;
 
-		console.log('brightness', brightness);
-		console.log('size', size);
-		console.log('color', color);
+	// 	console.log('brightness', brightness);
+	// 	console.log('size', size);
+	// 	console.log('color', color);
+	// }
+
+	function handleBrightnessChange(event: CustomEvent<{ value: number }>) {
+		brightnessAdjustment = event.detail.value * 200 - 100;
 	}
 
-	$: handleSlidersChange(sliderValues);
+	function handleSizeChange(event: CustomEvent<{ value: number }>) {
+		pixelSize = Math.round(event.detail.value * 20) + 10;
+	}
+
+	function handleColorChange(event: CustomEvent<{ value: number }>) {
+		// color = event.detail.value;
+		console.log('color', event.detail.value);
+
+		let color = colorPalettes[Math.floor(event.detail.value * colorPalettes.length)];
+		console.log('color', color.key);
+		swapColorScheme(color.key);
+	}
 </script>
 
 <div class="grid gap-4 p-4 md:grid-cols-[1fr_20rem]">
@@ -1178,8 +1204,10 @@
 				<div class="hidden md:block">
 					<Freq />
 				</div>
-				<div>
-					<Slider bind:sliderValues />
+				<div class="flex flex-col gap-0">
+					<Slider initialValue={0.5} waveType={0} on:change={handleBrightnessChange} />
+					<Slider initialValue={0.5} waveType={1} on:change={handleSizeChange} />
+					<Slider initialValue={0.5} waveType={2} on:change={handleColorChange} />
 				</div>
 				{#if false}
 					<div class="flex flex-col gap-1.5 w-full max-w-sm">
