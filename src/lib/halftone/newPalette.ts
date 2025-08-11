@@ -358,19 +358,19 @@ export const colorPalettesList = [
 export const colorPalettes = [
 	{
 		key: 'default',
-		colors: ['#E1CF63', '#9FB8BB', '#F09A37', '#22CF63', '#625A7C', '#545654', '#000000']
+		colors: ['#E1CF63', '#9FB8BB', '#F09A37', '#E1CF63', '#22CF63', '#625A7C', '#545654', '#000000']
 	},
 	{
 		key: 'heatmap',
-		colors: ['#FF00E3', '#FF0005', '#FF5400', '#D6BD05', '#1E9F0E', '#162FEB', '#000000']
+		colors: ['#FF00E3', '#FF0005', '#FF5400', '#D6BD05', '#22CF63', '#1E9F0E', '#162FEB', '#000000']
 	},
 	{
 		key: 'heatmap2',
-		colors: ['#cc0d0d', '#9e5d12', '#0e914b', '#125b41', '#0f67a9', '#8a898a', '#000000']
+		colors: ['#FF00E3', '#cc0d0d', '#9e5d12', '#0e914b', '#125b41', '#0f67a9', '#8a898a', '#000000']
 	},
 	{
 		key: 'chart',
-		colors: ['#e7e7da', '##d4ce22', '#ca2d14', '##999881', '#215f14', '#605138', '#000000']
+		colors: ['#e7e7da', '#d4ce22', '#ca2d14', '#999881', '#215f14', '#605138', '#2e2b1c', '#000000']
 	}
 ];
 

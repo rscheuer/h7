@@ -5,6 +5,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { Switch } from '$lib/components/ui/switch/index.js';
 	import Freq from '$lib/extras/Freq.svelte';
 	import Slider from '$lib/extras/Slider.svelte';
@@ -55,6 +56,7 @@
 	let show = false;
 
 	let sliderValues = [0.5, 0.3, 0.3];
+	let colorPaletteLength = colorPalettes.length;
 
 	$: console.log('brightness change', brightnessAdjustment);
 
@@ -1046,6 +1048,52 @@
 		updateOutput();
 	}
 
+	// Function to swap color scheme from colorPalettes array
+	async function swapColorScheme(colorPaletteKey?: string) {
+		if (!selectedPalette) return;
+
+		// Get a random color palette if no key is provided
+		let targetPalette;
+		if (colorPaletteKey) {
+			targetPalette = colorPalettes.find((p) => p.key === colorPaletteKey);
+		} else {
+			// Get a random palette different from current one
+			const availablePalettes = colorPalettes.filter((p) => p.key !== selectedPalette?.key);
+			targetPalette = availablePalettes[Math.floor(Math.random() * availablePalettes.length)];
+		}
+
+		if (!targetPalette) return;
+
+		// Create a new palette with the same tiles but new colors
+		const newPalette: PaletteType = {
+			key: targetPalette.key,
+			tiles: selectedPalette.tiles.map((tile, index) => ({
+				...tile,
+				color: targetPalette.colors[index % targetPalette.colors.length] || tile.color
+			}))
+		};
+
+		// Convert SVG tiles to PNGs with new colors
+		const newTileImages = await Promise.all(
+			newPalette.tiles.map(async (tile) => {
+				const pngUrl = await convertSVGToPNG(tile.svg, tile.color || '#000000');
+				return loadTileImage(pngUrl);
+			})
+		);
+
+		// Update the selected palette
+		selectedPalette = newPalette;
+
+		// Update tile colors
+		tileColors = newPalette.tiles.map((tile) => ({
+			mode: tile.colorMode || 'custom',
+			color: tile.color || '#000000'
+		}));
+
+		tileImages = newTileImages;
+		// No animation needed for color swapping
+	}
+
 	// Update the handlePaletteSelect function to track the index
 	async function handlePaletteSelect(event: CustomEvent<{ palette: PaletteType; index: number }>) {
 		const { palette, index } = event.detail;
@@ -1292,6 +1340,34 @@
 				<div class="space-y-2">
 					<div class="flex justify-between items-center">
 						<p class="text-sm font-medium">Select a Tile Palette</p>
+						{#if selectedPalette}
+							<div class="flex gap-1">
+								<Button
+									variant="outline"
+									size="sm"
+									on:click={() => swapColorScheme()}
+									class="px-2 py-1 text-xs"
+									title="Apply random color scheme"
+								>
+									🎲 Swap
+								</Button>
+								<Select.Root>
+									<Select.Trigger class="w-24 h-8 text-xs">
+										<Select.Value placeholder="Pick..." />
+									</Select.Trigger>
+									<Select.Content>
+										{#each colorPalettes as colorPalette}
+											<Select.Item
+												value={colorPalette.key}
+												on:click={() => swapColorScheme(colorPalette.key)}
+											>
+												{colorPalette.key}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+						{/if}
 					</div>
 
 					<div class="flex flex-col gap-px">
